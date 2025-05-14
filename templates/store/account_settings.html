@@ -1,0 +1,137 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}Account Settings - Angel's Plant Shop{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-lg-3 mb-4">
+            {% include 'store/account_sidebar.html' %}
+        </div>
+        
+        <!-- Main Content -->
+        <div class="col-lg-9">
+            <div class="card">
+                <div class="card-header bg-white border-bottom-0">
+                    <h2 class="h5 mb-0">Account Settings</h2>
+                </div>
+                <div class="card-body">
+                    {% if messages %}
+                        {% for message in messages %}
+                            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                    
+                    <form method="post" class="needs-validation" novalidate>
+                        {% csrf_token %}
+                        
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <h3 class="h6 mb-3">Personal Information</h3>
+                                {{ form.first_name|as_crispy_field }}
+                                {{ form.last_name|as_crispy_field }}
+                                {{ form.email|as_crispy_field }}
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <h3 class="h6 mb-3">Password</h3>
+                                <p class="text-muted small">
+                                    To change your password, please use the password reset link below. We'll send you an email with instructions.
+                                </p>
+                                <a href="{% url 'password_reset' %}" class="btn btn-outline-secondary">
+                                    Change Password
+                                </a>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between align-items-center border-top pt-4">
+                            <a href="{% url 'store:account' %}" class="btn btn-outline-secondary">
+                                <i class="bi bi-arrow-left me-1"></i> Back to Account
+                            </a>
+                            <button type="submit" class="btn btn-success">
+                                <i class="bi bi-check2 me-1"></i> Save Changes
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <div class="card mt-4 border-danger">
+                <div class="card-header bg-white border-danger">
+                    <h3 class="h6 mb-0 text-danger">Danger Zone</h3>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h4 class="h6 mb-1">Delete Account</h4>
+                            <p class="small text-muted mb-0">
+                                Permanently delete your account and all associated data. This action cannot be undone.
+                            </p>
+                        </div>
+                        <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteAccountModal">
+                            Delete Account
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Account Modal -->
+<div class="modal fade" id="deleteAccountModal" tabindex="-1" aria-labelledby="deleteAccountModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteAccountModalLabel">Delete Your Account</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete your account? This will permanently remove all your data including:</p>
+                <ul>
+                    <li>Personal information</li>
+                    <li>Order history</li>
+                    <li>Saved addresses</li>
+                    <li>Wishlist items</li>
+                </ul>
+                <p class="text-danger">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form method="post" action="{% url 'store:delete_account' %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Yes, Delete My Account</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Enable form validation
+(function() {
+    'use strict';
+    
+    // Fetch all the forms we want to apply custom Bootstrap validation styles to
+    var forms = document.querySelectorAll('.needs-validation');
+    
+    // Loop over them and prevent submission
+    Array.prototype.slice.call(forms).forEach(function(form) {
+        form.addEventListener('submit', function(event) {
+            if (!form.checkValidity()) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            form.classList.add('was-validated');
+        }, false);
+    });
+})();
+</script>
+{% endblock %}
