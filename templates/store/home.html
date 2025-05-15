@@ -115,6 +115,13 @@
                         <div class="card-body">
                             <h5 class="card-title text-dark">{{ product.name|truncatechars:30 }}</h5>
                             <p class="card-text text-success fw-bold">${{ product.price }}</p>
+                            {% if product.quantity <= 0 and not product.allow_backorder %}
+                                <p class="text-danger small mb-2">Out of Stock</p>
+                            {% elif product.quantity <= 0 and product.allow_backorder %}
+                                <p class="text-warning small mb-2">Available for Backorder</p>
+                            {% else %}
+                                <p class="text-success small mb-2">In Stock ({{ product.quantity }} available)</p>
+                            {% endif %}
                             {% if product.average_rating %}
                                 <div class="mb-2">
                                     {% with ''|center:product.average_rating as range %}
@@ -155,6 +162,13 @@
                         <div class="card-body">
                             <h5 class="card-title text-dark">{{ product.name|truncatechars:30 }}</h5>
                             <p class="card-text text-success fw-bold">${{ product.price }}</p>
+                            {% if product.quantity <= 0 and not product.allow_backorder %}
+                                <p class="text-danger small mb-2">Out of Stock</p>
+                            {% elif product.quantity <= 0 and product.allow_backorder %}
+                                <p class="text-warning small mb-2">Available for Backorder</p>
+                            {% else %}
+                                <p class="text-success small mb-2">In Stock ({{ product.quantity }} available)</p>
+                            {% endif %}
                             {% if product.average_rating %}
                                 <div class="mb-2">
                                     {% with ''|center:product.average_rating as range %}
@@ -195,6 +209,13 @@
                         <div class="card-body">
                             <h5 class="card-title text-dark">{{ product.name|truncatechars:30 }}</h5>
                             <p class="card-text text-success fw-bold">${{ product.price }}</p>
+                            {% if product.quantity <= 0 and not product.allow_backorder %}
+                                <p class="text-danger small mb-2">Out of Stock</p>
+                            {% elif product.quantity <= 0 and product.allow_backorder %}
+                                <p class="text-warning small mb-2">Available for Backorder</p>
+                            {% else %}
+                                <p class="text-success small mb-2">In Stock ({{ product.quantity }} available)</p>
+                            {% endif %}
                             {% if product.average_rating %}
                                 <div class="mb-2">
                                     {% with ''|center:product.average_rating as range %}

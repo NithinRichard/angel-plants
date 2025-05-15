@@ -31,6 +31,7 @@ urlpatterns = [
     # Cart and Checkout
     path('cart/', views.CartView.as_view(), name='cart'),
     path('cart/update/', update_cart, name='update_cart'),
+    path('cart/update/<int:item_id>/', update_cart, name='update_cart_item'),
     path('cart/add/<int:product_id>/', add_to_cart, name='add_to_cart'),
     path('cart/remove/<int:product_id>/', remove_from_cart, name='remove_from_cart'),
     path('checkout/', views.CheckoutView.as_view(), name='checkout'),
@@ -51,7 +52,7 @@ urlpatterns = [
     # Wishlist
     path('account/wishlist/', views.WishlistView.as_view(), name='wishlist'),
     path('wishlist/add/<int:product_id>/', views.add_to_wishlist, name='add_to_wishlist'),
-    path('wishlist/remove/<int:item_id>/', views.remove_from_wishlist, name='remove_from_wishlist'),
+    path('wishlist/remove/<int:product_id>/', views.remove_from_wishlist, name='remove_from_wishlist'),
     path('account/settings/', views.AccountSettingsView.as_view(), name='account_settings'),
     
     # Authentication

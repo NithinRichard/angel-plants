@@ -434,9 +434,15 @@
                                 <li><a class="dropdown-item" href="#">
                                     <i class="fas fa-box me-2"></i>My Orders
                                 </a></li>
-                                <li><a class="dropdown-item" href="#">
-                                    <i class="fas fa-heart me-2"></i>Wishlist
-                                </a></li>
+                                <li>
+                                    <a class="dropdown-item d-flex justify-content-between align-items-center" 
+                                       href="{% url 'store:wishlist' %}">
+                                        <span><i class="fas fa-heart me-2"></i>Wishlist</span>
+                                        {% if wishlist_count > 0 %}
+                                            <span class="badge bg-primary rounded-pill">{{ wishlist_count }}</span>
+                                        {% endif %}
+                                    </a>
+                                </li>
                                 <li><hr class="dropdown-divider"></li>
                                 <li><a class="dropdown-item text-danger" href="{% url 'logout' %}">
                                     <i class="fas fa-sign-out-alt me-2"></i>Logout

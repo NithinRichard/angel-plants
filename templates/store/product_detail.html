@@ -41,8 +41,8 @@
             
             <div class="mb-3">
                 <span class="h5 text-success">₹{{ product.price|floatformat:2 }}</span>
-                {% if product.stock > 0 %}
-                    <span class="badge bg-success ms-2">In Stock</span>
+                {% if product.in_stock %}
+                    <span class="badge bg-success ms-2">In Stock ({{ product.quantity }})</span>
                 {% else %}
                     <span class="badge bg-secondary ms-2">Out of Stock</span>
                 {% endif %}
@@ -53,12 +53,12 @@
             </div>
             
             <div class="d-flex flex-wrap gap-2 mb-4">
-                {% if product.stock > 0 %}
+                {% if product.in_stock %}
                     <form action="{% url 'store:add_to_cart' product.id %}" method="post" class="me-2">
                         {% csrf_token %}
                         <div class="input-group mb-2" style="width: 150px;">
                             <button class="btn btn-outline-secondary" type="button" onclick="decrementQuantity()">-</button>
-                            <input type="number" id="quantity" name="quantity" class="form-control text-center" value="1" min="1" max="{{ product.stock }}">
+                            <input type="number" id="quantity" name="quantity" class="form-control text-center" value="1" min="1" max="{{ product.quantity }}" onchange="validateQuantity(this)">
                             <button class="btn btn-outline-secondary" type="button" onclick="incrementQuantity()">+</button>
                         </div>
                         <button type="submit" class="btn btn-primary">
@@ -69,18 +69,33 @@
                     <button class="btn btn-secondary" disabled>Out of Stock</button>
                 {% endif %}
                 
-                <form action="{% url 'store:add_to_wishlist' product.id %}" method="post" class="d-inline">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-outline-secondary" title="Add to Wishlist">
+                {% if user.is_authenticated %}
+                    {% if product in user.wishlist_items.all %}
+                        <form action="{% url 'store:remove_from_wishlist' product.id %}" method="post" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-danger" title="Remove from Wishlist">
+                                <i class="fas fa-heart"></i>
+                            </button>
+                        </form>
+                    {% else %}
+                        <form action="{% url 'store:add_to_wishlist' product.id %}" method="post" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-secondary" title="Add to Wishlist">
+                                <i class="far fa-heart"></i>
+                            </button>
+                        </form>
+                    {% endif %}
+                {% else %}
+                    <a href="{% url 'store:login' %}?next={{ request.path }}" class="btn btn-outline-secondary" title="Login to add to wishlist">
                         <i class="far fa-heart"></i>
-                    </button>
-                </form>
+                    </a>
+                {% endif %}
             </div>
             
-            <div class="d-flex gap-2">
-                <button class="btn btn-outline-secondary">
-                    <i class="far fa-heart me-2"></i>Add to Wishlist
-                </button>
+            <div class="d-flex gap-2 mt-2">
+                <a href="#" class="btn btn-outline-secondary">
+                    <i class="fas fa-share-alt me-2"></i>Share
+                </a>
                 <button class="btn btn-outline-secondary">
                     <i class="fas fa-share-alt me-2"></i>Share
                 </button>
@@ -374,21 +389,35 @@
 
 <script>
     // JavaScript for quantity buttons
+    function validateQuantity(input) {
+        const value = parseInt(input.value);
+        const max = parseInt(input.max);
+        const min = parseInt(input.min);
+        
+        if (isNaN(value) || value < min) {
+            input.value = min;
+        } else if (value > max) {
+            input.value = max;
+        }
+    }
+    
     function incrementQuantity() {
-        var quantityInput = document.getElementById('quantity');
-        var max = parseInt(quantityInput.max);
-        var current = parseInt(quantityInput.value);
+        const quantityInput = document.getElementById('quantity');
+        const max = parseInt(quantityInput.max);
+        const current = parseInt(quantityInput.value);
         if (current < max) {
             quantityInput.value = current + 1;
+            validateQuantity(quantityInput);
         }
     }
     
     function decrementQuantity() {
-        var quantityInput = document.getElementById('quantity');
-        var min = parseInt(quantityInput.min);
-        var current = parseInt(quantityInput.value);
+        const quantityInput = document.getElementById('quantity');
+        const min = parseInt(quantityInput.min);
+        const current = parseInt(quantityInput.value);
         if (current > min) {
             quantityInput.value = current - 1;
+            validateQuantity(quantityInput);
         }
     }
     

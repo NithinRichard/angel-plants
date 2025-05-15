@@ -55,17 +55,20 @@ def wishlist_count(request):
     """
     Context processor for wishlist count.
     """
-    context = {}
-    if hasattr(request, 'user') and request.user.is_authenticated:
-        try:
-            wishlist = Wishlist.objects.get(user=request.user)
-            context['wishlist_count'] = wishlist.products.count()
-        except Wishlist.DoesNotExist:
-            context['wishlist_count'] = 0
-    else:
-        context['wishlist_count'] = len(request.session.get('wishlist', []))
+    if not hasattr(request, 'user') or not request.user.is_authenticated:
+        return {'wishlist_count': 0}
     
-    return context
+    try:
+        wishlist_count = Wishlist.objects.filter(user=request.user).count()
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error getting wishlist count: {str(e)}")
+        wishlist_count = 0
+    
+    return {
+        'wishlist_count': wishlist_count
+    }
 
 
 def contact_info(request):

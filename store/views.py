@@ -1,5 +1,11 @@
 from decimal import Decimal
+import logging
 from django.shortcuts import render, get_object_or_404, redirect, HttpResponseRedirect
+from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.contrib.auth.forms import UserCreationForm
+
+logger = logging.getLogger(__name__)
 from django.views.generic import (
     TemplateView, ListView, DetailView, CreateView, UpdateView, 
     DeleteView, View, FormView
@@ -14,28 +20,23 @@ from django.http import JsonResponse, HttpResponseRedirect, HttpResponse, Http40
 from django.views.decorators.http import require_http_methods, require_POST
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
+from django.utils import timezone
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank, TrigramSimilarity
-from django.template.loader import render_to_string
-from django.utils import timezone
-from django.conf import settings
-from django.template.loader import get_template
-from django.utils.html import strip_tags
-import json
-from django.contrib.auth import get_user_model
-from django.contrib.auth.forms import UserCreationForm
+
+from .filters import ProductFilter
 from .forms import (
     ContactForm, ProductForm, ProductImageForm, ProductTagForm, 
     CheckoutForm, ReviewForm, AddressForm, CouponForm, 
     ProductVariationForm, VariationForm, VariationOptionForm, OrderForm
 )
 from .models import (
-    Product, Category, Order, OrderItem, 
-    Address, Wishlist, OrderActivity, BlogPost
+    Category, Product, ProductImage, ProductVariation, Variation, VariationOption, 
+    Review, Order, OrderItem, Cart, CartItem, Address, Wishlist,
+    OrderActivity, BlogPost
 )
-from .filters import ProductFilter
 
 # Get the User model
 User = get_user_model()
@@ -751,10 +752,36 @@ class HomeView(TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['page_title'] = 'Home - Angel\'s Plant Shop'
-        context['featured_products'] = Product.objects.filter(is_featured=True, is_active=True)[:8]
-        context['bestsellers'] = Product.objects.filter(is_bestseller=True, is_active=True)[:4]
-        context['new_arrivals'] = Product.objects.filter(is_active=True).order_by('-created_at')[:4]
-        context['categories'] = Category.objects.all()[:8]
+        
+        # Only show featured products that are in stock or allow backorder
+        context['featured_products'] = Product.objects.filter(
+            is_featured=True, 
+            is_active=True
+        ).filter(
+            Q(quantity__gt=0) | Q(allow_backorder=True)
+        )[:8]
+        
+        # Only show bestsellers that are in stock or allow backorder
+        context['bestsellers'] = Product.objects.filter(
+            is_bestseller=True, 
+            is_active=True
+        ).filter(
+            Q(quantity__gt=0) | Q(allow_backorder=True)
+        )[:4]
+        
+        # Only show new arrivals that are in stock or allow backorder
+        context['new_arrivals'] = Product.objects.filter(
+            is_active=True
+        ).filter(
+            Q(quantity__gt=0) | Q(allow_backorder=True)
+        ).order_by('-created_at')[:4]
+        
+        # Get categories with active products
+        context['categories'] = Category.objects.filter(
+            products__is_active=True,
+            products__quantity__gt=0
+        ).distinct()[:8]
+        
         return context
 
 
@@ -870,17 +897,31 @@ def add_to_wishlist(request, product_id):
     if not request.user.is_authenticated:
         messages.error(request, 'Please log in to add items to your wishlist.')
         return redirect('store:login')
-        
-    product = get_object_or_404(Product, id=product_id)
-    wishlist, created = Wishlist.objects.get_or_create(user=request.user)
     
-    if product in wishlist.products.all():
+    product = get_object_or_404(Product, id=product_id, is_active=True)
+    
+    # Check if the product is already in the user's wishlist
+    if Wishlist.objects.filter(user=request.user, product=product).exists():
         messages.info(request, 'This product is already in your wishlist.')
     else:
-        wishlist.products.add(product)
-        messages.success(request, 'Product added to your wishlist.')
+        try:
+            # Create a new wishlist item
+            Wishlist.objects.create(
+                user=request.user,
+                product=product,
+                quantity=1
+            )
+            messages.success(request, 'Product added to your wishlist.')
+        except Exception as e:
+            messages.error(request, 'Failed to add product to wishlist. Please try again.')
+            logger.error(f"Error adding to wishlist: {str(e)}")
     
-    return redirect('store:product_detail', slug=product.slug)
+    # Redirect back to the previous page or product detail
+    redirect_url = request.META.get('HTTP_REFERER', 'store:product_detail')
+    try:
+        return redirect(redirect_url)
+    except:
+        return redirect('store:product_detail', slug=product.slug)
 
 
 def api_toggle_wishlist(request, product_id):
@@ -890,43 +931,79 @@ def api_toggle_wishlist(request, product_id):
     """
     if not request.user.is_authenticated:
         return JsonResponse({
-            'status': 'error',
-            'message': 'Authentication required',
+            'success': False,
+            'message': 'Please log in to modify your wishlist.',
             'login_required': True
-        }, status=401)
-        
-    product = get_object_or_404(Product, id=product_id)
-    wishlist, created = Wishlist.objects.get_or_create(user=request.user)
+        }, status=403)
     
-    if product in wishlist.products.all():
-        wishlist.products.remove(product)
+    try:
+        product = Product.objects.get(id=product_id, is_active=True)
+    except Product.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'message': 'Product not found or is no longer available.'
+        }, status=404)
+    
+    # Check if the product is already in the user's wishlist
+    wishlist_item = Wishlist.objects.filter(user=request.user, product=product).first()
+    
+    if wishlist_item:
+        # Remove from wishlist
+        wishlist_item.delete()
         added = False
-        message = 'Product removed from wishlist.'
+        message = 'Product removed from your wishlist.'
     else:
-        wishlist.products.add(product)
-        added = True
-        message = 'Product added to wishlist.'
+        # Add to wishlist
+        try:
+            Wishlist.objects.create(
+                user=request.user,
+                product=product,
+                quantity=1
+            )
+            added = True
+            message = 'Product added to your wishlist.'
+        except Exception as e:
+            logger.error(f"Error adding to wishlist: {str(e)}")
+            return JsonResponse({
+                'success': False,
+                'message': 'Failed to update wishlist. Please try again.'
+            }, status=500)
+    
+    # Get updated wishlist count
+    wishlist_count = Wishlist.objects.filter(user=request.user).count()
     
     return JsonResponse({
-        'status': 'success',
-        'message': message,
+        'success': True,
         'added': added,
-        'wishlist_count': wishlist.products.count()
+        'message': message,
+        'wishlist_count': wishlist_count
     })
 
 
 @login_required
-def remove_from_wishlist(request, item_id):
+def remove_from_wishlist(request, product_id):
     """
     Remove an item from the user's wishlist.
     """
-    wishlist_item = get_object_or_404(Wishlist, id=item_id, user=request.user)
-    product_name = wishlist_item.product.name
-    wishlist_item.delete()
-    messages.success(request, f"{product_name} has been removed from your wishlist.")
+    try:
+        wishlist_item = Wishlist.objects.get(
+            product_id=product_id,
+            user=request.user
+        )
+        wishlist_item.delete()
+        messages.success(request, 'Item removed from your wishlist.')
+    except Wishlist.DoesNotExist:
+        messages.error(request, 'Item not found in your wishlist.')
+    except Exception as e:
+        logger.error(f"Error removing from wishlist: {str(e)}")
+        messages.error(request, 'Failed to remove item from wishlist. Please try again.')
     
     # Redirect back to the previous page or wishlist
-    return HttpResponseRedirect(request.META.get('HTTP_REFERER', reverse('store:wishlist')))
+    redirect_url = request.META.get('HTTP_REFERER', 'store:wishlist')
+    try:
+        return redirect(redirect_url)
+    except:
+        return redirect('store:wishlist')
 
 
 @login_required
@@ -1066,35 +1143,49 @@ def add_to_cart(request, product_id, quantity=1):
 
 @require_http_methods(["POST"])
 @login_required
-def update_cart(request):
+def update_cart(request, item_id=None):
     try:
-        data = json.loads(request.body)
-        product_id = data.get('product_id')
-        quantity = int(data.get('quantity', 1))
-        action = data.get('action')
+        if request.body:
+            data = json.loads(request.body)
+            product_id = data.get('product_id')
+            quantity = int(data.get('quantity', 1))
+            action = data.get('action')
+        else:
+            # Handle form submission
+            product_id = request.POST.get('product_id')
+            quantity = int(request.POST.get('quantity', 1))
+            action = request.POST.get('action')
+            
+        # If item_id is provided in the URL, use that instead of product_id
+        if item_id is not None:
+            cart_item = get_object_or_404(CartItem, id=item_id, cart__user=request.user)
+            product_id = cart_item.product.id
         
-        if not product_id or quantity < 1:
-            return JsonResponse({'status': 'error', 'message': 'Invalid request'}, status=400)
-        
-        product = get_object_or_404(Product, id=product_id, is_active=True)
-        
-        # Get or create cart for the current user
-        cart, created = Cart.objects.get_or_create(
-            user=request.user,
-            defaults={'status': 'active'}
-        )
-        
-        # Get or create cart item
-        cart_item, created = CartItem.objects.get_or_create(
-            cart=cart,
-            product=product,
-            defaults={'quantity': 0}
-        )
+        if item_id is None:
+            if not product_id or quantity < 1:
+                return JsonResponse({'status': 'error', 'message': 'Invalid request'}, status=400)
+            
+            product = get_object_or_404(Product, id=product_id, is_active=True)
+            
+            # Get or create cart for the current user
+            cart, created = Cart.objects.get_or_create(
+                user=request.user,
+                defaults={'status': 'active'}
+            )
+            
+            # Get or create cart item
+            cart_item, created = CartItem.objects.get_or_create(
+                cart=cart,
+                product=product,
+                defaults={'quantity': 0}
+            )
+        else:
+            cart = cart_item.cart
         
         # Update quantity based on action
         if action == 'add':
             cart_item.quantity = F('quantity') + quantity
-        elif action == 'set':
+        elif action == 'set' or item_id is not None:
             cart_item.quantity = quantity
         elif action == 'remove':
             cart_item.quantity = 0
@@ -1109,12 +1200,14 @@ def update_cart(request):
         if cart_item.quantity <= 0:
             cart_item.delete()
             item_quantity = 0
+            item_subtotal = 0
         else:
             item_quantity = cart_item.quantity
+            item_subtotal = float(cart_item.product.price) * item_quantity
         
         # Recalculate cart totals
-        cart_items = CartItem.objects.filter(cart=cart)
-        cart_total = sum(item.product.price * item.quantity for item in cart_items)
+        cart_items = CartItem.objects.filter(cart=cart).select_related('product')
+        cart_total = sum(float(item.product.price) * item.quantity for item in cart_items)
         cart_count = sum(item.quantity for item in cart_items)
         
         # Update cart totals
@@ -1130,36 +1223,45 @@ def update_cart(request):
                 'name': item.product.name,
                 'price': str(item.product.price),
                 'quantity': item.quantity,
-                'subtotal': str(item.product.price * item.quantity),
-                'image': item.product.images.first().image.url if item.product.images.exists() else ''
+                'subtotal': str(float(item.product.price) * item.quantity),
+                'image': item.product.image.url if hasattr(item.product, 'image') and item.product.image else ''
             }
             for item in cart_items
         ]
         
+        # Prepare response data
         response_data = {
-            'status': 'success',
+            'success': True,
             'message': 'Cart updated successfully',
-            'cart': {
-                'item_count': cart_count,
-                'total': str(cart_total),
-                'items': cart_items_data
-            },
-            'updated_item': {
-                'id': cart_item.id,
-                'product_id': product.id,
-                'quantity': item_quantity,
-                'subtotal': str(product.price * item_quantity) if item_quantity > 0 else '0.00'
-            }
+            'item_count': cart_count,
+            'total': cart_total,
+            'item_total': item_subtotal if 'item_subtotal' in locals() else 0,
+            'items': cart_items_data
         }
         
-        return JsonResponse(response_data)
+        # If this is an AJAX request, return JSON
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse(response_data)
+            
+        # Otherwise, redirect back to the cart page with a success message
+        messages.success(request, 'Cart updated successfully')
+        return redirect('store:cart')
         
     except json.JSONDecodeError:
-        return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'message': 'Invalid JSON'}, status=400)
+        messages.error(request, 'Invalid request')
+        return redirect('store:cart')
     except Product.DoesNotExist:
-        return JsonResponse({'status': 'error', 'message': 'Product not found'}, status=404)
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'message': 'Product not found'}, status=404)
+        messages.error(request, 'Product not found')
+        return redirect('store:cart')
     except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'message': str(e)}, status=500)
+        messages.error(request, 'An error occurred while updating your cart')
+        return redirect('store:cart')
 
 
 def api_update_cart(request):
@@ -1685,7 +1787,14 @@ class WishlistView(LoginRequiredMixin, ListView):
     paginate_by = 10
     
     def get_queryset(self):
-        return Wishlist.objects.filter(user=self.request.user).select_related('product')
+        return Wishlist.objects.filter(
+            user=self.request.user
+        ).select_related('product')
+        
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Add any additional context data here if needed
+        return context
 
 
 class ContactThanksView(TemplateView):
@@ -1805,11 +1914,20 @@ class ProductDetailView(DetailView):
             # Sort to maintain the order from the session
             recently_viewed.sort(key=lambda x: product_ids.index(x.id))
         
+        # Check if product is in user's wishlist
+        in_wishlist = False
+        if self.request.user.is_authenticated:
+            in_wishlist = Wishlist.objects.filter(
+                user=self.request.user, 
+                product=product
+            ).exists()
+            
         context.update({
             'related_products': related_products,
             'recently_viewed': recently_viewed,
             'meta_title': product.meta_title or f"{product.name} | Angel's Plant Shop",
             'meta_description': product.meta_description or product.short_description,
+            'in_wishlist': in_wishlist,
         })
         
         # Add current product to recently viewed

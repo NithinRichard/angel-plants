@@ -1,60 +1,65 @@
 {% extends 'base.html' %}
 {% load static %}
+{% load humanize %}
 
-{% block title %}Shopping Cart - Angel's Plant Shop{% endblock %}
+{% block title %}Shopping Cart - Angel Plants{% endblock %}
 
 {% block content %}
 <div class="container py-5">
-    <nav aria-label="breadcrumb">
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{% url 'store:product_list' %}">Home</a></li>
-            <li class="breadcrumb-item active" aria-current="page">Shopping Cart</li>
-        </ol>
-    </nav>
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
     
     <h1 class="mb-4">Your Shopping Cart</h1>
     
-    {% if order and order.items.count > 0 %}
+    {% if order and order.orderitem_set.count > 0 %}
         <div class="row">
             <div class="col-lg-8">
                 <div class="card mb-4">
                     <div class="card-header bg-light">
-                        <h5 class="mb-0">Cart Items ({{ order.items.count }})</h5>
+                        <h5 class="mb-0">Cart Items ({{ order.orderitem_set.count }})</h5>
                     </div>
                     <div class="card-body p-0">
-                        {% for item in order.items.all %}
+                        {% for item in order.orderitem_set.all %}
                             <div class="cart-item p-3 border-bottom" data-item-id="{{ item.id }}">
                                 <div class="row align-items-center">
                                     <div class="col-md-2">
-                                        <img src="{{ item.product.image.url }}" alt="{{ item.product.name }}" class="img-fluid">
+                                        {% if item.product.image %}
+                                            <img src="{{ item.product.image.url }}" alt="{{ item.product.name }}" class="img-fluid">
+                                        {% else %}
+                                            <div class="bg-light d-flex align-items-center justify-content-center" style="height: 100px; width: 100px;">
+                                                <i class="fas fa-leaf fa-3x text-muted"></i>
+                                            </div>
+                                        {% endif %}
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-md-5">
                                         <h5 class="mb-1">{{ item.product.name }}</h5>
-                                        <p class="text-muted mb-0">{{ item.product.category.name }}</p>
+                                        <p class="text-muted mb-2">SKU: {{ item.product.sku|default:"N/A" }}</p>
+                                        <p class="mb-0">₹{{ item.product.price|floatformat:2 }}</p>
                                     </div>
-                                    <div class="col-md-2">
-                                        <div class="input-group">
-                                            <button class="btn btn-outline-secondary btn-sm" type="button" 
-                                                data-item-id="{{ item.id }}" data-action="decrement">-</button>
+                                    <div class="col-md-3">
+                                        <div class="input-group" style="max-width: 120px;">
+                                            <button class="btn btn-outline-secondary btn-sm decrement" type="button">-</button>
                                             <input type="number" class="form-control form-control-sm text-center quantity-input" 
-                                                   value="{{ item.quantity }}" min="1" max="{{ item.product.stock }}" 
+                                                   value="{{ item.quantity }}" min="1" max="{{ item.product.stock }}"
                                                    data-item-id="{{ item.id }}">
-                                            <button class="btn btn-outline-secondary btn-sm" type="button" 
-                                                data-item-id="{{ item.id }}" data-action="increment">+</button>
+                                            <button class="btn btn-outline-secondary btn-sm increment" type="button">+</button>
                                         </div>
-                                    </div>
-                                    <div class="col-md-2 text-center">
-                                        <span class="price">₹{{ item.price|floatformat:2 }}</span>
+                                        <small class="text-muted">{{ item.product.stock }} available</small>
                                     </div>
                                     <div class="col-md-2 text-end">
-                                        <span class="fw-bold">₹{{ item.get_cost|floatformat:2 }}</span>
-                                    </div>
-                                    <div class="col-12 mt-2">
-                                        <form action="{% url 'store:remove_from_cart' %}" method="post" class="d-inline">
+                                        <p class="mb-1 fw-bold item-total" data-item-id="{{ item.id }}">
+                                            ₹{{ item.get_cost|floatformat:2 }}
+                                        </p>
+                                        <form action="{% url 'store:remove_from_cart' product_id=item.product.id %}" method="post" class="d-inline">
                                             {% csrf_token %}
-                                            <input type="hidden" name="item_id" value="{{ item.id }}">
-                                            <button type="submit" class="btn btn-link text-danger btn-sm p-0">
-                                                <i class="fas fa-trash-alt me-1"></i> Remove
+                                            <button type="submit" class="btn btn-link text-danger p-0" style="font-size: 0.8rem;">
+                                                <i class="fas fa-trash-alt"></i> Remove
                                             </button>
                                         </form>
                                     </div>
@@ -65,13 +70,13 @@
                 </div>
                 
                 <div class="d-flex justify-content-between mb-4">
-                    <a href="{% url 'store:product_list' %}" class="btn btn-outline-success">
-                        <i class="fas fa-arrow-left me-1"></i> Continue Shopping
+                    <a href="{% url 'store:product_list' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-chevron-left me-2"></i>Continue Shopping
                     </a>
-                    <form action="{% url 'store:clear_cart' %}" method="post" class="d-inline" id="clear-cart-form">
+                    <form id="clear-cart-form" action="{% url 'store:clear_cart' %}" method="post" class="d-inline">
                         {% csrf_token %}
                         <button type="submit" class="btn btn-outline-danger">
-                            <i class="fas fa-trash-alt me-1"></i> Clear Cart
+                            <i class="fas fa-trash-alt me-2"></i>Clear Cart
                         </button>
                     </form>
                 </div>
@@ -84,21 +89,21 @@
                     </div>
                     <div class="card-body">
                         <div class="d-flex justify-content-between mb-2">
-                            <span>Subtotal ({{ order.items.count }} items)</span>
-                            <span>₹{{ order.get_total_cost|floatformat:2 }}</span>
+                            <span>Subtotal (<span id="item-count">{{ order.orderitem_set.count }}</span> items)</span>
+                            <span id="subtotal">₹{{ order.get_total_cost|floatformat:2 }}</span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span>Shipping</span>
-                            <span>₹99.00</span>
+                            <span>₹{{ shipping_cost|floatformat:2 }}</span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
-                            <span>Tax</span>
-                            <span>₹{{ order.get_tax|floatformat:2 }}</span>
+                            <span>Tax (18%)</span>
+                            <span>₹{{ tax|floatformat:2 }}</span>
                         </div>
                         <hr>
                         <div class="d-flex justify-content-between mb-3">
                             <strong>Total</strong>
-                            <strong>₹{{ order.get_total_with_shipping|floatformat:2 }}</strong>
+                            <strong id="order-total">₹{{ total_with_shipping|floatformat:2 }}</strong>
                         </div>
                         <a href="{% url 'store:checkout' %}" class="btn btn-success w-100">
                             Proceed to Checkout
@@ -108,24 +113,18 @@
                 
                 <div class="card mt-4">
                     <div class="card-body">
-                        <h6 class="mb-3">We Accept</h6>
-                        <div class="d-flex gap-2">
-                            <img src="https://via.placeholder.com/40" alt="Visa" class="img-fluid" style="width: 40px;">
-                            <img src="https://via.placeholder.com/40" alt="Mastercard" class="img-fluid" style="width: 40px;">
-                            <img src="https://via.placeholder.com/40" alt="American Express" class="img-fluid" style="width: 40px;">
-                            <img src="https://via.placeholder.com/40" alt="PayPal" class="img-fluid" style="width: 40px;">
-                        </div>
-                        <p class="small text-muted mt-2 mb-0">Your payment information is secure. We don't store your credit card details.</p>
+                        <h6><i class="fas fa-truck me-2"></i>Free Shipping</h6>
+                        <p class="small text-muted mb-0">Enjoy free shipping on all orders over ₹999</p>
                     </div>
                 </div>
             </div>
         </div>
     {% else %}
         <div class="text-center py-5">
-            <i class="fas fa-shopping-cart fa-5x text-muted mb-4"></i>
+            <i class="fas fa-shopping-cart fa-4x text-muted mb-4"></i>
             <h3>Your cart is empty</h3>
-            <p class="lead">Looks like you haven't added anything to your cart yet.</p>
-            <a href="{% url 'store:product_list' %}" class="btn btn-success btn-lg mt-3">
+            <p class="text-muted">Looks like you haven't added any products to your cart yet.</p>
+            <a href="{% url 'store:product_list' %}" class="btn btn-primary">
                 <i class="fas fa-shopping-bag me-2"></i>Continue Shopping
             </a>
         </div>
@@ -134,29 +133,51 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/cart.js' %}"></script>
 <script>
-    function updateQuantity(itemId, action, value = null) {
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle quantity increment/decrement buttons
+    document.querySelectorAll('.quantity-input').forEach(input => {
+        const itemId = input.dataset.itemId;
+        const incrementBtn = input.nextElementSibling;
+        const decrementBtn = input.previousElementSibling;
+        
+        incrementBtn.addEventListener('click', () => {
+            const max = parseInt(input.max);
+            const current = parseInt(input.value);
+            if (current < max) {
+                input.value = current + 1;
+                updateCartItem(itemId, input.value);
+            }
+        });
+        
+        decrementBtn.addEventListener('click', () => {
+            const min = parseInt(input.min);
+            const current = parseInt(input.value);
+            if (current > min) {
+                input.value = current - 1;
+                updateCartItem(itemId, input.value);
+            }
+        });
+        
+        input.addEventListener('change', () => {
+            const value = parseInt(input.value);
+            const min = parseInt(input.min);
+            const max = parseInt(input.max);
+            
+            if (isNaN(value) || value < min) {
+                input.value = min;
+            } else if (value > max) {
+                input.value = max;
+            }
+            
+            updateCartItem(itemId, input.value);
+        });
+    });
+    
+    // Function to update cart item quantity via AJAX
+    function updateCartItem(itemId, quantity) {
         const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-        let quantityInput = event ? event.target.closest('.input-group').querySelector('.quantity-input') : null;
-        let currentValue = value !== null ? parseInt(value) : parseInt(quantityInput.value);
-        let newValue = currentValue;
         
-        // Calculate new quantity
-        if (action === 'increment') {
-            newValue = currentValue + 1;
-        } else if (action === 'decrement') {
-            newValue = Math.max(1, currentValue - 1);
-        } else if (action === 'set' && value !== null) {
-            newValue = Math.max(1, parseInt(value) || 1);
-        }
-        
-        // Update UI immediately for better UX
-        if (quantityInput) {
-            quantityInput.value = newValue;
-        }
-        
-        // Make AJAX call to update cart
         fetch(`/cart/update/${itemId}/`, {
             method: 'POST',
             headers: {
@@ -165,148 +186,75 @@
                 'X-Requested-With': 'XMLHttpRequest'
             },
             body: JSON.stringify({
-                quantity: newValue
+                quantity: parseInt(quantity)
             })
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                // Update cart totals
-                document.querySelector('.cart-subtotal').textContent = `$${data.subtotal.toFixed(2)}`;
-                document.querySelector('.cart-tax').textContent = `$${data.tax.toFixed(2)}`;
-                document.querySelector('.cart-total').textContent = `$${data.total.toFixed(2)}`;
-                
-                // Update item total
-                const itemElement = document.querySelector(`.cart-item[data-item-id="${itemId}"]`);
-                if (itemElement) {
-                    const itemTotalElement = itemElement.querySelector('.item-total');
-                    if (itemTotalElement) {
-                        itemTotalElement.textContent = `$${data.item_total.toFixed(2)}`;
-                    }
-                    
-                    // Update stock warning if needed
-                    const stockWarning = itemElement.querySelector('.stock-warning');
-                    if (stockWarning) {
-                        stockWarning.textContent = data.stock_warning || '';
-                        stockWarning.style.display = data.stock_warning ? 'block' : 'none';
-                    }
-                }
-                
-                // Update cart count in navbar if available
-                const cartCount = document.querySelector('.cart-count');
-                if (cartCount) {
-                    cartCount.textContent = data.cart_count;
-                }
-                
-                // Show success message
-                showToast('Cart updated successfully', 'success');
+                // Update the UI without reloading the page
+                updateCartUI(data);
             } else {
-                showToast(data.error || 'Failed to update cart', 'error');
-                // Revert UI if update failed
-                if (quantityInput) {
-                    quantityInput.value = currentValue;
-                }
+                console.error('Error updating cart:', data.message);
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            showToast('An error occurred while updating the cart', 'error');
-            // Revert UI on error
-            if (quantityInput) {
-                quantityInput.value = currentValue;
-            }
         });
     }
     
-    // Handle quantity input changes and button clicks
-    document.addEventListener('DOMContentLoaded', function() {
-        // Clear cart form submission
-        const clearCartForm = document.getElementById('clear-cart-form');
-        if (clearCartForm) {
-            clearCartForm.addEventListener('submit', function(e) {
-                e.preventDefault();
-                if (confirm('Are you sure you want to clear your cart?')) {
-                    this.submit();
-                }
-            });
+    // Function to update the cart UI with new data
+    function updateCartUI(data) {
+        // Update item count
+        document.getElementById('item-count').textContent = data.item_count;
+        
+        // Update subtotal
+        document.getElementById('subtotal').textContent = '₹' + parseFloat(data.total - data.shipping_cost - data.tax).toFixed(2);
+        
+        // Update tax
+        document.querySelector('.tax-amount').textContent = '₹' + data.tax.toFixed(2);
+        
+        // Update total
+        document.getElementById('order-total').textContent = '₹' + (parseFloat(data.total) + parseFloat(data.shipping_cost)).toFixed(2);
+        
+        // Update individual item total if it exists
+        const itemTotalElement = document.querySelector(`.item-total[data-item-id="${data.updated_item.id}"]`);
+        if (itemTotalElement) {
+            itemTotalElement.textContent = '₹' + parseFloat(data.updated_item.subtotal).toFixed(2);
         }
         
-        // Handle quantity input changes
-        document.addEventListener('change', function(e) {
-            const input = e.target;
-            if (input.classList.contains('quantity-input')) {
-                const itemId = input.dataset.itemId;
-                if (itemId) {
-                    updateQuantity(itemId, 'set', input.value);
-                }
-            }
-        });
-        
-        // Handle increment/decrement buttons
-        document.addEventListener('click', function(e) {
-            const button = e.target.closest('.btn-outline-secondary');
-            if (button && button.dataset.action) {
-                const action = button.dataset.action;
-                const itemId = button.dataset.itemId;
-                const input = button.closest('.input-group')?.querySelector('.quantity-input');
-                
-                if (itemId && input) {
-                    let newValue = parseInt(input.value) || 1;
-                    
-                    if (action === 'increment') {
-                        newValue++;
-                    } else if (action === 'decrement') {
-                        newValue = Math.max(1, newValue - 1);
-                    }
-                    
-                    input.value = newValue;
-                    updateQuantity(itemId, 'set', newValue);
-                }
-            }
-        });
-    });
-    
-    // Helper function to show toast messages
-    function showToast(message, type = 'info') {
-        // Check if toast container exists, if not create it
-        let toastContainer = document.getElementById('toast-container');
-        if (!toastContainer) {
-            toastContainer = document.createElement('div');
-            toastContainer.id = 'toast-container';
-            toastContainer.style.position = 'fixed';
-            toastContainer.style.top = '20px';
-            toastContainer.style.right = '20px';
-            toastContainer.style.zIndex = '9999';
-            document.body.appendChild(toastContainer);
-        }
-        
-        // Create toast element
-        const toast = document.createElement('div');
-        toast.className = `toast show align-items-center text-white bg-${type} border-0`;
-        toast.role = 'alert';
-        toast.setAttribute('aria-live', 'assertive');
-        toast.setAttribute('aria-atomic', 'true');
-        toast.style.minWidth = '250px';
-        toast.style.marginBottom = '10px';
-        
-        // Add toast content
-        toast.innerHTML = `
-            <div class="d-flex">
-                <div class="toast-body">
-                    ${message}
-                </div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-            </div>
+        // Show success message
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-success alert-dismissible fade show';
+        alertDiv.role = 'alert';
+        alertDiv.innerHTML = `
+            Cart updated successfully!
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         `;
         
-        // Add to container
-        toastContainer.appendChild(toast);
-        
-        // Auto-remove toast after 5 seconds
-        setTimeout(() => {
-            toast.classList.remove('show');
-            setTimeout(() => toast.remove(), 300);
-        }, 5000);
+        const container = document.querySelector('.container.py-5');
+        if (container) {
+            container.insertBefore(alertDiv, container.firstChild);
+            
+            // Auto-dismiss the alert after 3 seconds
+            setTimeout(() => {
+                const alert = bootstrap.Alert.getOrCreateInstance(alertDiv);
+                if (alert) {
+                    alert.close();
+                }
+            }, 3000);
+        }
     }
+    
+    // Confirm before clearing cart
+    const clearCartForm = document.getElementById('clear-cart-form');
+    if (clearCartForm) {
+        clearCartForm.addEventListener('submit', function(e) {
+            if (!confirm('Are you sure you want to clear your cart?')) {
+                e.preventDefault();
+            }
+        });
+    }
+});
 </script>
 {% endblock %}

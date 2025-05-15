@@ -68,7 +68,7 @@ def add_to_cart(request, product_id, quantity=1):
         return JsonResponse({'status': 'error', 'message': error_msg}, status=400)
     
     messages.error(request, error_msg)
-    return redirect('home')
+    return redirect('store:home')
 
 @login_required
 def update_cart(request):
