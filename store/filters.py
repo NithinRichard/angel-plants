@@ -1,5 +1,6 @@
 import django_filters
 from django import forms
+from django.db.models import Q
 from .models import Product, Category
 
 class ProductFilter(django_filters.FilterSet):
@@ -82,5 +83,6 @@ class ProductFilter(django_filters.FilterSet):
     
     def filter_in_stock(self, queryset, name, value):
         if value:
-            return queryset.filter(quantity__gt=0)
+            # Check if the product is in stock based on quantity > 0 or allow_backorder is True
+            return queryset.filter(Q(quantity__gt=0) | Q(allow_backorder=True))
         return queryset

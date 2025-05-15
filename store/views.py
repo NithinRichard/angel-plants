@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.shortcuts import render, get_object_or_404, redirect, HttpResponseRedirect
 from django.views.generic import (
     TemplateView, ListView, DetailView, CreateView, UpdateView, 
@@ -31,9 +32,8 @@ from .forms import (
     ProductVariationForm, VariationForm, VariationOptionForm, OrderForm
 )
 from .models import (
-    Product, Category, ProductImage, ProductTag, Order, OrderItem, 
-    Address, Review, Wishlist, WishlistItem, Coupon, Payment, 
-    OrderActivity, ProductVariation, Variation, VariationOption, BlogPost
+    Product, Category, Order, OrderItem, 
+    Address, Wishlist, OrderActivity, BlogPost
 )
 from .filters import ProductFilter
 
@@ -1704,11 +1704,22 @@ class ProductListView(ListView):
     paginate_by = 12
     
     def get_queryset(self):
+        # Get all active products
         queryset = Product.objects.filter(is_active=True).select_related('category').prefetch_related('tags')
         
-        # Apply filters
-        self.filterset = ProductFilter(self.request.GET, queryset=queryset)
-        queryset = self.filterset.qs
+        # Debug: Print initial queryset count
+        print(f"Initial queryset count: {queryset.count()}")
+        
+        # Apply filters if any filter parameters are present
+        filter_params = {k: v for k, v in self.request.GET.items() if k != 'page' and v}
+        if filter_params:
+            print(f"Applying filters: {filter_params}")
+            self.filterset = ProductFilter(filter_params, queryset=queryset)
+            queryset = self.filterset.qs
+            print(f"Filtered queryset count: {queryset.count()}")
+        else:
+            # If no filters are applied, use the base queryset
+            self.filterset = ProductFilter(queryset=queryset)
         
         # Search
         search_query = self.request.GET.get('q')
@@ -1739,7 +1750,17 @@ class ProductListView(ListView):
     
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['categories'] = Category.objects.all()
+        categories = Category.objects.all()
+        products = self.get_queryset()
+        
+        # Debug output
+        print("\n=== DEBUG: ProductListView ===")
+        print(f"Categories found: {categories.count()}")
+        print(f"Products found: {products.count()}")
+        if products.exists():
+            print(f"First product: {products[0].name} (ID: {products[0].id})")
+        
+        context['categories'] = categories
         context['featured_products'] = Product.objects.filter(is_featured=True, is_active=True)[:4]
         context['bestsellers'] = Product.objects.filter(is_bestseller=True, is_active=True)[:4]
         context['filter'] = self.filterset
@@ -1815,12 +1836,17 @@ class ProductDetailView(DetailView):
 
 class CartView(LoginRequiredMixin, View):
     def get(self, request, *args, **kwargs):
+        # Get or create a new order with payment_status=False (unpaid)
         order, created = Order.objects.get_or_create(
             user=request.user, 
-            paid=False,
+            payment_status=False,
             defaults={
                 'user': request.user,
-                'paid': False
+                'payment_status': False,
+                'email': request.user.email,
+                'first_name': request.user.first_name,
+                'last_name': request.user.last_name,
+                'status': 'pending'
             }
         )
         

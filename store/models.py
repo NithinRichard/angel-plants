@@ -1,13 +1,15 @@
-from django.db import models, transaction
+from django.db import models
 from django.contrib.auth.models import User
 from django.utils.translation import gettext_lazy as _
-from django.core.validators import MinValueValidator, MaxValueValidator
-from django.core.exceptions import ValidationError
-from model_utils import FieldTracker
 from django.utils.text import slugify
-from django.urls import reverse
+from django.core.validators import MinValueValidator, MaxValueValidator
+from django.db.models import F, Q, Sum
+from django.core.exceptions import ValidationError
+from django.conf import settings
+from django.core.validators import FileExtensionValidator
+from django.dispatch import receiver
 from django_countries.fields import CountryField
-from django.utils import timezone
+from model_utils import FieldTracker
 from ckeditor.fields import RichTextField
 from django.contrib.contenttypes.fields import GenericRelation
 from django.utils.html import strip_tags
@@ -15,196 +17,6 @@ from django.db.models import Avg, Count, Sum, F, Q
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 
-
-class BlogCategory(models.Model):
-    """
-    Model to categorize blog posts
-    """
-    name = models.CharField(_('name'), max_length=100)
-    slug = models.SlugField(_('slug'), max_length=100, unique=True)
-    description = models.TextField(_('description'), blank=True)
-    is_active = models.BooleanField(_('is active'), default=True)
-    created_at = models.DateTimeField(_('created at'), auto_now_add=True)
-    updated_at = models.DateTimeField(_('updated at'), auto_now=True)
-    
-    class Meta:
-        verbose_name = _('blog category')
-        verbose_name_plural = _('blog categories')
-        ordering = ['name']
-        app_label = 'store'  # Explicitly set app_label
-    
-    def __str__(self):
-        return self.name
-    
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            self.slug = slugify(self.name)
-        super().save(*args, **kwargs)
-
-
-class BlogTag(models.Model):
-    """
-    Model for blog post tags
-    """
-    name = models.CharField(_('name'), max_length=50, unique=True)
-    slug = models.SlugField(_('slug'), max_length=50, unique=True)
-    created_at = models.DateTimeField(_('created at'), auto_now_add=True)
-    
-    class Meta:
-        verbose_name = _('blog tag')
-        verbose_name_plural = _('blog tags')
-        ordering = ['name']
-        app_label = 'store'  # Explicitly set app_label
-    
-    def __str__(self):
-        return self.name
-    
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            self.slug = slugify(self.name)
-        super().save(*args, **kwargs)
-
-
-class BlogPost(models.Model):
-    """
-    Model for blog posts
-    """
-    DRAFT = 'draft'
-    PUBLISHED = 'published'
-    STATUS_CHOICES = [
-        (DRAFT, _('Draft')),
-        (PUBLISHED, _('Published')),
-    ]
-    
-    title = models.CharField(_('title'), max_length=200)
-    slug = models.SlugField(_('slug'), max_length=200, unique_for_date='publish_date')
-    author = models.ForeignKey(
-        'auth.User',  # Use string reference to avoid circular imports
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name='blog_posts',
-        verbose_name=_('author')
-    )
-    excerpt = models.TextField(_('excerpt'), blank=True, help_text=_('A short summary of the post'))
-    content = RichTextField(_('content'))
-    featured_image = models.ImageField(
-        _('featured image'),
-        upload_to='blog/featured_images/%Y/%m/%d/',
-        blank=True,
-        null=True
-    )
-    categories = models.ManyToManyField(
-        'store.BlogCategory',
-        through='store.BlogPostCategory',
-        related_name='blog_posts',
-        verbose_name=_('categories'),
-        help_text=_('Select categories for this blog post')
-    )
-    tags = models.ManyToManyField(
-        'store.BlogTag',
-        through='store.BlogPostTag',
-        related_name='blog_posts',
-        verbose_name=_('tags'),
-        blank=True,
-        help_text=_('Add tags to this blog post')
-    )
-    status = models.CharField(
-        _('status'),
-        max_length=10,
-        choices=STATUS_CHOICES,
-        default=DRAFT
-    )
-    allow_comments = models.BooleanField(_('allow comments'), default=True)
-    view_count = models.PositiveIntegerField(_('view count'), default=0, editable=False)
-    meta_title = models.CharField(_('meta title'), max_length=100, blank=True)
-    meta_description = models.TextField(_('meta description'), blank=True)
-    created_at = models.DateTimeField(_('created at'), auto_now_add=True)
-    updated_at = models.DateTimeField(_('updated at'), auto_now=True)
-    publish_date = models.DateTimeField(
-        _('publish date'),
-        null=True,
-        blank=True,
-        help_text=_('Leave blank to save as draft')
-    )
-    
-    class Meta:
-        verbose_name = _('blog post')
-        verbose_name_plural = _('blog posts')
-        ordering = ['-publish_date']
-        get_latest_by = 'publish_date'
-    
-    def __str__(self):
-        return self.title
-    
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            self.slug = slugify(self.title)
-        if not self.meta_title:
-            self.meta_title = self.title
-        if not self.meta_description and self.excerpt:
-            self.meta_description = self.excerpt[:160]  # Truncate to 160 chars for SEO
-        super().save(*args, **kwargs)
-    
-    def get_absolute_url(self):
-        if not self.publish_date:
-            return ''
-        return reverse('blog:post_detail', kwargs={
-            'year': self.publish_date.strftime('%Y'),
-            'month': self.publish_date.strftime('%m'),
-            'day': self.publish_date.strftime('%d'),
-            'slug': self.slug
-        })
-    
-    def increment_view_count(self):
-        """Increment the view count for this post"""
-        self.view_count = models.F('view_count') + 1
-        self.save(update_fields=['view_count'])
-    
-    def is_published(self):
-        """Check if the post is published and the publish date is in the past"""
-        return (
-            self.status == self.PUBLISHED and 
-            self.publish_date is not None and 
-            self.publish_date <= timezone.now()
-        )
-
-
-class BlogPostCategory(models.Model):
-    """
-    Intermediate model for BlogPost and BlogCategory many-to-many relationship
-    """
-    blogpost = models.ForeignKey('store.BlogPost', on_delete=models.CASCADE)
-    category = models.ForeignKey('store.BlogCategory', on_delete=models.CASCADE)
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        app_label = 'store'
-        db_table = 'store_blogpost_category_through'
-        unique_together = ('blogpost', 'category')
-        verbose_name = _('blog post category')
-        verbose_name_plural = _('blog post categories')
-    
-    def __str__(self):
-        return f"{self.blogpost} - {self.category}"
-
-
-class BlogPostTag(models.Model):
-    """
-    Intermediate model for BlogPost and BlogTag many-to-many relationship
-    """
-    blogpost = models.ForeignKey('store.BlogPost', on_delete=models.CASCADE)
-    tag = models.ForeignKey('store.BlogTag', on_delete=models.CASCADE)
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        app_label = 'store'
-        db_table = 'store_blogpost_tag_through'
-        unique_together = ('blogpost', 'tag')
-        verbose_name = _('blog post tag')
-        verbose_name_plural = _('blog post tags')
-    
-    def __str__(self):
-        return f"{self.blogpost} - {self.tag}"
 
 
 class Payment(models.Model):
@@ -276,79 +88,19 @@ class Payment(models.Model):
 
 class Wishlist(models.Model):
     """
-    Model to store user's wishlist
+    Model to store user's wishlist items
     """
     user = models.ForeignKey(
-        'auth.User',  # Use full app label for proper reference
+        'auth.User',
         on_delete=models.CASCADE,
-        related_name='wishlists',
+        related_name='wishlist_items',
         verbose_name=_('user'),
         db_index=True,
         null=True,  # Allow null for anonymous users
         blank=True  # Allow blank in forms
     )
-    name = models.CharField(
-        _('wishlist name'),
-        max_length=100,
-        default=_('My Wishlist')
-    )
-    is_public = models.BooleanField(
-        _('is public'),
-        default=False,
-        help_text=_('Allow others to see this wishlist')
-    )
-    created_at = models.DateTimeField(_('created at'), auto_now_add=True, db_index=True)
-    updated_at = models.DateTimeField(_('updated at'), auto_now=True, db_index=True)
-    
-    class Meta:
-        app_label = 'store'
-        verbose_name = _('wishlist')
-        verbose_name_plural = _('wishlists')
-        ordering = ['-updated_at']
-        unique_together = ['user', 'name']
-        db_table = 'store_wishlist'  # Explicit table name
-    
-    def __str__(self):
-        return f"{self.user.get_username() if self.user else 'Anonymous'}'s {self.name}"
-        
-    def add_item(self, product, quantity=1, notes=''):
-        """
-        Add an item to the wishlist or update quantity if it already exists
-        """
-        if not self.pk:
-            # If the wishlist hasn't been saved yet, save it first
-            self.save()
-            
-        from django.db import transaction
-        from .models import WishlistItem  # Import here to avoid circular imports
-        
-        with transaction.atomic():
-            item, created = WishlistItem.objects.get_or_create(
-                wishlist=self,
-                product=product,
-                defaults={'quantity': quantity, 'notes': notes}
-            )
-            if not created:
-                item.quantity += quantity
-                if notes:
-                    item.notes = notes
-                item.save()
-        return item
-
-
-class WishlistItem(models.Model):
-    """
-    Model to store individual items in a wishlist
-    """
-    wishlist = models.ForeignKey(
-        'store.Wishlist',  # Use full app label for proper reference
-        on_delete=models.CASCADE,
-        related_name='wishlist_items',
-        verbose_name=_('wishlist'),
-        db_index=True
-    )
     product = models.ForeignKey(
-        'store.Product',  # Use string reference to avoid circular imports
+        'Product',
         on_delete=models.CASCADE,
         related_name='wishlist_items',
         verbose_name=_('product'),
@@ -365,25 +117,31 @@ class WishlistItem(models.Model):
         blank=True,
         help_text=_('Any additional notes about this item')
     )
-    created_at = models.DateTimeField(_('created at'), auto_now_add=True)
-    updated_at = models.DateTimeField(_('updated at'), auto_now=True)
+    is_public = models.BooleanField(
+        _('is public'),
+        default=False,
+        help_text=_('Allow others to see this wishlist item')
+    )
+    created_at = models.DateTimeField(_('created at'), auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(_('updated at'), auto_now=True, db_index=True)
     
     class Meta:
         app_label = 'store'
         verbose_name = _('wishlist item')
         verbose_name_plural = _('wishlist items')
         ordering = ['-created_at']
-        unique_together = ['wishlist', 'product']
-        db_table = 'store_wishlist_item'  # Explicit table name to match the model name
+        unique_together = ['user', 'product']
+        db_table = 'store_wishlist'
     
     def __str__(self):
+        username = self.user.get_username() if self.user else 'Anonymous'
         product_name = getattr(self.product, 'name', 'Unknown Product')
-        return f"{self.quantity}x {product_name} in {self.wishlist}"
-        
+        return f"{username}'s wishlist: {product_name} (x{self.quantity})"
+    
     def clean(self):
-        # Ensure the wishlist exists
-        if not hasattr(self, 'wishlist') or not self.wishlist.pk:
-            raise ValidationError({'wishlist': _('A valid wishlist is required')})
+        # Ensure the user exists for non-anonymous wishlist items
+        if not self.user and not hasattr(self, 'session_key'):
+            raise ValidationError(_('Either a user or session key is required'))
             
         # Ensure the product exists
         if not hasattr(self, 'product') or not self.product.pk:
@@ -396,29 +154,46 @@ class WishlistItem(models.Model):
             
         # Clean and validate
         self.clean()
-            
+        
         # Save the item
-        with transaction.atomic():
-            super().save(*args, **kwargs)
-            
-            # Update the wishlist's updated_at timestamp
-            if hasattr(self, 'wishlist') and self.wishlist:
-                Wishlist.objects.filter(pk=self.wishlist.pk).update(updated_at=timezone.now())
-        
-    def delete(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+    
+    @classmethod
+    def add_to_wishlist(cls, user, product, quantity=1, notes='', is_public=False):
         """
-        Override delete to update the wishlist's updated_at timestamp
+        Add an item to the wishlist or update quantity if it already exists
         """
-        wishlist = getattr(self, 'wishlist', None)
-        
         with transaction.atomic():
-            result = super().delete(*args, **kwargs)
-            
-            # Update the wishlist's updated_at timestamp if it exists
-            if wishlist and hasattr(wishlist, 'pk') and wishlist.pk:
-                Wishlist.objects.filter(pk=wishlist.pk).update(updated_at=timezone.now())
-                
-        return result
+            item, created = cls.objects.get_or_create(
+                user=user,
+                product=product,
+                defaults={
+                    'quantity': quantity,
+                    'notes': notes,
+                    'is_public': is_public
+                }
+            )
+            if not created:
+                item.quantity += quantity
+                if notes:
+                    item.notes = notes
+                item.is_public = is_public
+                item.save()
+        return item
+    
+    @classmethod
+    def get_user_wishlist(cls, user):
+        """
+        Get all wishlist items for a user
+        """
+        return cls.objects.filter(user=user).select_related('product')
+    
+    @classmethod
+    def get_public_wishlists(cls):
+        """
+        Get all public wishlist items
+        """
+        return cls.objects.filter(is_public=True).select_related('product', 'user')
 
 
 class Review(models.Model):
@@ -440,7 +215,7 @@ class Review(models.Model):
         verbose_name=_('product')
     )
     user = models.ForeignKey(
-        User, 
+        'auth.User',
         on_delete=models.SET_NULL, 
         null=True, 
         related_name='reviews',
@@ -947,10 +722,14 @@ class Order(models.Model):
         return f'Order {self.order_number or self.id}'
         
     def save(self, *args, **kwargs):
-        if not self.order_number:
-            # Generate order number (you might want to use a more robust method)
-            self.order_number = f'ORD-{self.created.strftime("%Y%m%d")}-{self.id}'
+        # First save to get an ID
         super().save(*args, **kwargs)
+        # Then update the order number if needed
+        if not self.order_number:
+            # Use created_at instead of created
+            self.order_number = f'ORD-{self.created_at.strftime("%Y%m%d")}-{self.id}'
+            # Save again to update the order number
+            super().save(update_fields=['order_number'])
     
     def get_total_cost(self):
         return sum(item.get_cost() for item in self.items.all())
@@ -1160,23 +939,7 @@ class CartItem(models.Model):
             self.delete()
 
 
-class Wishlist(models.Model):
-    """
-    Model to store user's wishlist items
-    """
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='wishlist_items')
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='wishlisted_by')
-    created_at = models.DateTimeField(default=timezone.now)
-    notes = models.TextField(blank=True, help_text="Any notes about this item")
 
-    class Meta:
-        verbose_name = 'Wishlist Item'
-        verbose_name_plural = 'Wishlist Items'
-        unique_together = ['user', 'product']
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return f"{self.user.username}'s wishlist: {self.product.name}"
 
 
 class BlogCategory(models.Model):
