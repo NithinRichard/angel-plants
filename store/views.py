@@ -1813,24 +1813,17 @@ class ProductListView(ListView):
     paginate_by = 12
     
     def get_queryset(self):
-        # Get all active products
-        queryset = Product.objects.filter(is_active=True).select_related('category').prefetch_related('tags')
+        # Get all active products that are in stock
+        queryset = Product.objects.filter(is_active=True, stock__gt=0).select_related('category').prefetch_related('tags')
         
-        # Debug: Print initial queryset count
-        print(f"Initial queryset count: {queryset.count()}")
+        # Filter by category if category_slug is provided in URL
+        category_slug = self.kwargs.get('category_slug')
+        if category_slug:
+            category = get_object_or_404(Category, slug=category_slug)
+            queryset = queryset.filter(category=category)
+            print(f"Filtered by category '{category.name}': {queryset.count()} products")
         
-        # Apply filters if any filter parameters are present
-        filter_params = {k: v for k, v in self.request.GET.items() if k != 'page' and v}
-        if filter_params:
-            print(f"Applying filters: {filter_params}")
-            self.filterset = ProductFilter(filter_params, queryset=queryset)
-            queryset = self.filterset.qs
-            print(f"Filtered queryset count: {queryset.count()}")
-        else:
-            # If no filters are applied, use the base queryset
-            self.filterset = ProductFilter(queryset=queryset)
-        
-        # Search
+        # Apply search query if present
         search_query = self.request.GET.get('q')
         if search_query:
             queryset = queryset.filter(
@@ -1839,22 +1832,28 @@ class ProductListView(ListView):
                 Q(short_description__icontains=search_query) |
                 Q(tags__name__icontains=search_query)
             ).distinct()
+            print(f"After search for '{search_query}': {queryset.count()} products")
         
-        # Sorting
-        sort_by = self.request.GET.get('sort_by', 'created_at')
-        if sort_by == 'price_asc':
-            queryset = queryset.order_by('price')
-        elif sort_by == 'price_desc':
-            queryset = queryset.order_by('-price')
-        elif sort_by == 'name_asc':
-            queryset = queryset.order_by('name')
-        elif sort_by == 'name_desc':
-            queryset = queryset.order_by('-name')
-        elif sort_by == 'newest':
-            queryset = queryset.order_by('-created_at')
-        else:
-            queryset = queryset.order_by('-created_at')
-            
+        # Apply sorting
+        sort_by = self.request.GET.get('sort_by', 'newest')
+        sort_mapping = {
+            'price_asc': 'price',
+            'price_desc': '-price',
+            'name_asc': 'name',
+            'name_desc': '-name',
+            'newest': '-created_at',
+            'created_at': '-created_at'
+        }
+        
+        order_field = sort_mapping.get(sort_by, '-created_at')
+        queryset = queryset.order_by(order_field)
+        
+        # Debug info
+        print(f"\n=== DEBUG: Product List Query ===")
+        print(f"Total products in stock: {queryset.count()}")
+        if queryset.exists():
+            print(f"Sample product: {queryset[0].name} (ID: {queryset[0].id}, Stock: {queryset[0].stock})")
+        
         return queryset
     
     def get_context_data(self, **kwargs):
@@ -1862,16 +1861,25 @@ class ProductListView(ListView):
         categories = Category.objects.all()
         products = self.get_queryset()
         
+        # Get current category if in category view
+        category_slug = self.kwargs.get('category_slug')
+        current_category = None
+        if category_slug:
+            current_category = get_object_or_404(Category, slug=category_slug)
+            context['category'] = current_category
+            context['category_slug'] = category_slug
+        
         # Debug output
         print("\n=== DEBUG: ProductListView ===")
         print(f"Categories found: {categories.count()}")
+        print(f"Current category: {current_category}" if current_category else "No category filter")
         print(f"Products found: {products.count()}")
         if products.exists():
-            print(f"First product: {products[0].name} (ID: {products[0].id})")
+            print(f"First product: {products[0].name} (ID: {products[0].id}, Stock: {products[0].stock})")
         
         context['categories'] = categories
-        context['featured_products'] = Product.objects.filter(is_featured=True, is_active=True)[:4]
-        context['bestsellers'] = Product.objects.filter(is_bestseller=True, is_active=True)[:4]
+        context['featured_products'] = Product.objects.filter(is_featured=True, is_active=True, stock__gt=0)[:4]
+        context['bestsellers'] = Product.objects.filter(is_bestseller=True, is_active=True, stock__gt=0)[:4]
         context['filter'] = self.filterset
         
         # Add filter parameters to pagination
