@@ -10,6 +10,14 @@ from django.views.generic import (
     TemplateView, ListView, DetailView, CreateView, UpdateView, 
     DeleteView, View, FormView
 )
+from django.template import RequestContext
+from django.template.loader import get_template
+from django.http import HttpResponse
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from django.db.models.functions import Lower
 from .filters import ProductFilter
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
@@ -622,6 +630,146 @@ class OrderHistoryView(LoginRequiredMixin, ListView):
         return context
 
 
+class InvoiceView(LoginRequiredMixin, DetailView):
+    model = Order
+    template_name = 'store/invoice.html'
+    context_object_name = 'order'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        order = self.get_object()
+        
+        # Calculate totals
+        subtotal = sum(item.quantity * item.price for item in order.items.all())
+        tax = subtotal * Decimal('0.18')  # 18% GST
+        shipping = Decimal('99.00')  # Fixed shipping cost
+        total = subtotal + tax + shipping
+        
+        context.update({
+            'subtotal': subtotal,
+            'tax': tax.quantize(Decimal('0.01')),
+            'shipping': shipping,
+            'total': total.quantize(Decimal('0.01')),
+            'company_info': {
+                'name': 'Angel Plants',
+                'address': '123 Plant Street, Garden City',
+                'phone': '+91 1234567890',
+                'email': 'info@angelplants.com',
+                'gstin': '27AABCU1234C1Z5'
+            }
+        })
+        return context
+    
+    def render_to_response(self, context, **response_kwargs):
+        # Get the order from context
+        order = context['order']
+        
+        # Calculate totals
+        subtotal = sum(item.quantity * item.price for item in order.items.all())
+        tax = subtotal * Decimal('0.18')  # 18% GST
+        shipping = Decimal('99.00')  # Fixed shipping cost
+        total = subtotal + tax + shipping
+        
+        # Create the PDF response
+        response = HttpResponse(content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="invoice_{order.order_number}.pdf"'
+        
+        # Create the PDF object
+        doc = SimpleDocTemplate(response, pagesize=A4)
+        
+        # Add styles
+        styles = getSampleStyleSheet()
+        styles.add(ParagraphStyle(name='RightAlign', parent=styles['Normal'], alignment=1))
+        styles.add(ParagraphStyle(name='CenterAlign', parent=styles['Normal'], alignment=1, fontSize=14, spaceAfter=20))
+        
+        # Create story
+        story = []
+        
+        # Add company info
+        story.append(Paragraph("<strong>Angel Plants</strong>", styles['CenterAlign']))
+        story.append(Paragraph("123 Plant Street, Garden City", styles['Normal']))
+        story.append(Paragraph("Phone: +91 1234567890", styles['Normal']))
+        story.append(Paragraph("Email: info@angelplants.com", styles['Normal']))
+        story.append(Paragraph("GSTIN: 27AABCU1234C1Z5", styles['Normal']))
+        story.append(Spacer(1, 20))
+        
+        # Add invoice header
+        story.append(Paragraph("INVOICE", styles['CenterAlign']))
+        story.append(Spacer(1, 20))
+        
+        # Add billing info
+        billing_info = [
+            ["Bill To:", f"{order.first_name} {order.last_name}"],
+            ["", order.address],
+            ["", f"{order.city}, {order.state} {order.postal_code}"],
+            ["", order.country],
+            ["Invoice Number:", order.order_number],
+            ["Date:", order.created_at.strftime("%B %d, %Y")],
+            ["Payment Status:", "Paid" if order.payment_status else "Unpaid"]
+        ]
+        
+        billing_table = Table(billing_info, colWidths=[100, 400])
+        billing_table.setStyle(TableStyle([
+            ('TEXTCOLOR', (0,0), (-1,-1), colors.black),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
+            ('FONTSIZE', (0,0), (-1,-1), 10),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('GRID', (0,0), (-1,-1), 1, colors.black)
+        ]))
+        story.append(billing_table)
+        story.append(Spacer(1, 20))
+        
+        # Add items table
+        items_data = [['Item', 'Quantity', 'Price', 'Subtotal']]
+        for item in order.items.all():
+            items_data.append([
+                item.product.name,
+                str(item.quantity),
+                f"₹{item.price}",
+                f"₹{item.quantity * item.price}"
+            ])
+        
+        items_table = Table(items_data)
+        items_table.setStyle(TableStyle([
+            ('TEXTCOLOR', (0,0), (-1,-1), colors.black),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
+            ('FONTSIZE', (0,0), (-1,-1), 10),
+            ('BACKGROUND', (0,0), (-1,0), colors.grey),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('GRID', (0,0), (-1,-1), 1, colors.black)
+        ]))
+        story.append(items_table)
+        story.append(Spacer(1, 20))
+        
+        # Add totals
+        totals_data = [
+            ["Subtotal", f"₹{subtotal}"],
+            ["Shipping", f"₹{shipping}"],
+            ["GST (18%)", f"₹{tax}"],
+            ["Total Amount", f"₹{total}"]
+        ]
+        
+        totals_table = Table(totals_data, colWidths=[300, 200])
+        totals_table.setStyle(TableStyle([
+            ('TEXTCOLOR', (0,0), (-1,-1), colors.black),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
+            ('FONTSIZE', (0,0), (-1,-1), 10),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('GRID', (0,0), (-1,-1), 1, colors.black),
+            ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'),
+            ('TEXTCOLOR', (0,-1), (-1,-1), colors.black)
+        ]))
+        story.append(totals_table)
+        
+        # Build the PDF
+        doc.build(story)
+        
+        return response
+
 class AccountView(LoginRequiredMixin, TemplateView):
     """
     View to display user account dashboard with order history and account details.
@@ -633,7 +781,7 @@ class AccountView(LoginRequiredMixin, TemplateView):
         user = self.request.user
         
         # Get user's orders, most recent first
-        orders = Order.objects.filter(user=user).order_by('-created')
+        orders = Order.objects.filter(user=user).order_by('-created_at')
         
         context.update({
             'orders': orders,

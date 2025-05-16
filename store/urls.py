@@ -43,6 +43,7 @@ urlpatterns = [
     path('account/', views.AccountView.as_view(), name='account'),
     path('account/orders/', views.OrderHistoryView.as_view(), name='order_history'),
     path('account/orders/<str:order_number>/', views.OrderDetailView.as_view(), name='order_detail'),
+    path('invoice/<int:pk>/', views.InvoiceView.as_view(), name='invoice'),
     # Address Management
     path('account/addresses/', views.AddressBookView.as_view(), name='address_book'),
     path('account/addresses/add/', views.AddressCreateView.as_view(), name='address_create'),
