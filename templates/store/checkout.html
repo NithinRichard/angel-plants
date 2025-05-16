@@ -148,7 +148,7 @@
                     <div class="card-body">
                         <div class="d-flex justify-content-between mb-2">
                             <span>Subtotal ({{ order.items.count }} items)</span>
-                            <span>₹{{ order.get_total_cost|floatformat:2 }}</span>
+                            <span>₹{{ order.total_amount|floatformat:2 }}</span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span>Shipping</span>
@@ -235,7 +235,7 @@
                     // In a real application, you would handle the form submission here
                     // For demo purposes, we'll simulate a delay and redirect
                     setTimeout(function() {
-                        window.location.href = "{% url 'store:order_confirmation' order_id=order.id %}";
+                        window.location.href = "{% url 'store:checkout_success' order_number=order.order_number %}";
                     }, 1500);
                     
                     event.preventDefault();

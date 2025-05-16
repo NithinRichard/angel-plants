@@ -4,11 +4,58 @@ from django.utils.text import slugify
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
+from django.contrib.auth import get_user_model
 
 from .models import (
     Product, Category, ProductImage, ProductTag, Order, OrderItem, 
     OrderActivity, Address, Coupon, ProductVariation, Variation, VariationOption
 )
+
+User = get_user_model()
+
+from .models import Profile
+
+class ProfileForm(forms.ModelForm):
+    """Form for updating user profile information."""
+    class Meta:
+        model = Profile
+        fields = ['phone', 'profile_picture', 'bio', 'date_of_birth', 'website']
+        widgets = {
+            'phone': forms.TextInput(attrs={'class': 'form-control'}),
+            'profile_picture': forms.FileInput(attrs={'class': 'form-control'}),
+            'bio': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
+            'date_of_birth': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'website': forms.URLInput(attrs={'class': 'form-control'}),
+        }
+        labels = {
+            'phone': _('Phone Number'),
+            'profile_picture': _('Profile Picture'),
+            'bio': _('Bio'),
+            'date_of_birth': _('Date of Birth'),
+            'website': _('Website'),
+        }
+
+class UserForm(forms.ModelForm):
+    """Form for updating basic user information."""
+    class Meta:
+        model = User
+        fields = ['first_name', 'last_name', 'email']
+        widgets = {
+            'first_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'last_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control'}),
+        }
+        labels = {
+            'first_name': _('First Name'),
+            'last_name': _('Last Name'),
+            'email': _('Email Address'),
+        }
+
+    def clean_email(self):
+        email = self.cleaned_data.get('email')
+        if email and User.objects.filter(email=email).exclude(id=self.instance.id).exists():
+            raise forms.ValidationError(_('This email address is already in use.'))
+        return email
 
 class OrderForm(forms.ModelForm):
     """

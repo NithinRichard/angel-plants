@@ -120,7 +120,7 @@
                                             <span class="fw-bold">₹{{ product.price|floatformat:2 }}</span>
                                         {% endif %}
                                     </div>
-                                    {% if product.stock > 0 %}
+                                    {% if product.quantity > 0 %}
                                         <span class="badge bg-success">In Stock</span>
                                     {% else %}
                                         <span class="badge bg-secondary">Out of Stock</span>
@@ -132,10 +132,9 @@
                                     <a href="{% url 'store:product_detail' slug=product.slug %}" class="btn btn-outline-success">
                                         <i class="fas fa-eye me-1"></i> View Details
                                     </a>
-                                    {% if product.stock > 0 %}
-                                        <form action="{% url 'store:add_to_cart' %}" method="post" class="mt-2">
+                                    {% if product.quantity > 0 %}
+                                        <form action="{% url 'store:add_to_cart' product_id=product.id %}" method="post" class="mt-2">
                                             {% csrf_token %}
-                                            <input type="hidden" name="product_id" value="{{ product.id }}">
                                             <button type="submit" class="btn btn-success w-100">
                                                 <i class="fas fa-cart-plus me-1"></i> Add to Cart
                                             </button>

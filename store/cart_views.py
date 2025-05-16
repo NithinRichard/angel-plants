@@ -55,7 +55,7 @@ def add_to_cart(request, product_id, quantity=1):
             return JsonResponse(response_data)
             
         # For regular form submission, redirect to cart or previous page
-        redirect_url = request.META.get('HTTP_REFERER', reverse('cart'))
+        redirect_url = request.META.get('HTTP_REFERER', reverse('store:cart'))
         return redirect(redirect_url)
         
     except Product.DoesNotExist:
@@ -114,7 +114,7 @@ def update_cart(request):
                 return JsonResponse(response_data)
                 
             messages.success(request, 'Your cart has been updated.')
-            return redirect('cart')
+            return redirect('store:cart')
             
         except Cart.DoesNotExist:
             error_msg = 'No active cart found.'
@@ -125,9 +125,9 @@ def update_cart(request):
             return JsonResponse({'status': 'error', 'message': error_msg}, status=400)
             
         messages.error(request, error_msg)
-        return redirect('cart')
+        return redirect('store:cart')
     
-    return redirect('cart')
+    return redirect('store:cart')
 
 @login_required
 def remove_from_cart(request, product_id):
@@ -180,7 +180,7 @@ def remove_from_cart(request, product_id):
             return JsonResponse(response_data)
             
         # For regular form submission, redirect to cart or previous page
-        redirect_url = request.META.get('HTTP_REFERER', reverse('cart'))
+        redirect_url = request.META.get('HTTP_REFERER', reverse('store:cart'))
         return redirect(redirect_url)
         
     except Product.DoesNotExist:
@@ -195,4 +195,4 @@ def remove_from_cart(request, product_id):
         return JsonResponse({'status': 'error', 'message': error_msg}, status=400)
     
     messages.error(request, error_msg)
-    return redirect('cart')
+    return redirect('store:cart')

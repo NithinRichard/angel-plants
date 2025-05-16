@@ -19,10 +19,10 @@
                     <a href="{% url 'store:order_history' %}" class="list-group-item list-group-item-action active">
                         <i class="fas fa-box me-2"></i> My Orders
                     </a>
-                    <a href="{% url 'account_change_password' %}" class="list-group-item list-group-item-action">
+                    <a href="{% url 'password_change' %}" class="list-group-item list-group-item-action">
                         <i class="fas fa-key me-2"></i> Change Password
                     </a>
-                    <a href="{% url 'account_logout' %}" class="list-group-item list-group-item-action text-danger">
+                    <a href="{% url 'logout' %}" class="list-group-item list-group-item-action text-danger">
                         <i class="fas fa-sign-out-alt me-2"></i> Logout
                     </a>
                 </div>
@@ -121,55 +121,23 @@
                 </div>
             </div>
 
-            <!-- Shipping and Billing -->
+            <!-- Shipping Information -->
             <div class="row">
-                {% if shipping_address %}
-                <div class="col-md-6 mb-4">
+                <div class="col-md-12 mb-4">
                     <div class="card h-100">
                         <div class="card-header bg-light">
-                            <h6 class="mb-0">Shipping Address</h6>
+                            <h6 class="mb-0">Shipping Information</h6>
                         </div>
                         <div class="card-body">
                             <address>
-                                {{ shipping_address.first_name }} {{ shipping_address.last_name }}<br>
-                                {{ shipping_address.address_line1 }}<br>
-                                {% if shipping_address.address_line2 %}
-                                    {{ shipping_address.address_line2 }}<br>
-                                {% endif %}
-                                {{ shipping_address.city }}, {{ shipping_address.state }} {{ shipping_address.postal_code }}<br>
-                                {{ shipping_address.country.name }}<br>
-                                {% if shipping_address.phone %}
-                                    <abbr title="Phone">P:</abbr> {{ shipping_address.phone }}
-                                {% endif %}
+                                {{ order.first_name }} {{ order.last_name }}<br>
+                                {{ shipping_info.address }}<br>
+                                {{ shipping_info.city }}, {{ shipping_info.state }} {{ shipping_info.postal_code }}<br>
+                                {{ shipping_info.country }}
                             </address>
                         </div>
                     </div>
                 </div>
-                {% endif %}
-
-                {% if billing_address %}
-                <div class="col-md-6 mb-4">
-                    <div class="card h-100">
-                        <div class="card-header bg-light">
-                            <h6 class="mb-0">Billing Address</h6>
-                        </div>
-                        <div class="card-body">
-                            <address>
-                                {{ billing_address.first_name }} {{ billing_address.last_name }}<br>
-                                {{ billing_address.address_line1 }}<br>
-                                {% if billing_address.address_line2 %}
-                                    {{ billing_address.address_line2 }}<br>
-                                {% endif %}
-                                {{ billing_address.city }}, {{ billing_address.state }} {{ billing_address.postal_code }}<br>
-                                {{ billing_address.country.name }}<br>
-                                {% if billing_address.phone %}
-                                    <abbr title="Phone">P:</abbr> {{ billing_address.phone }}
-                                {% endif %}
-                            </address>
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
             </div>
 
             <!-- Order Actions -->
@@ -182,7 +150,7 @@
                         <i class="fas fa-print me-2"></i> Print Invoice
                     </a>
                     {% if not order.paid %}
-                    <a href="{% url 'store:checkout' order_id=order.id %}" class="btn btn-primary">
+                    <a href="{% url 'store:checkout' %}" class="btn btn-primary">
                         <i class="fas fa-credit-card me-2"></i> Complete Payment
                     </a>
                     {% endif %}

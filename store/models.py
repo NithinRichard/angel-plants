@@ -1,8 +1,8 @@
 from django.db import models
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
 from django.utils.text import slugify
-from django.core.validators import MinValueValidator, MaxValueValidator
+from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
 from django.db.models import F, Q, Sum
 from django.core.exceptions import ValidationError
 from django.conf import settings
@@ -16,8 +16,32 @@ from django.utils.html import strip_tags
 from django.db.models import Avg, Count, Sum, F, Q
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
+from PIL import Image
 
+User = get_user_model()
 
+# Signal to create Profile when User is created
+@receiver(post_save, sender=User)
+def create_user_profile(sender, instance, created, **kwargs):
+    try:
+        profile = instance.profile
+        if created:
+            profile.save()
+        else:
+            profile.save()
+    except Profile.DoesNotExist:
+        Profile.objects.create(user=instance)
+
+# Create profiles for existing users
+try:
+    for user in User.objects.all():
+        try:
+            if not hasattr(user, 'profile'):
+                Profile.objects.create(user=user)
+        except Exception as e:
+            print(f"Error creating profile for user {user.username}: {str(e)}")
+except Exception as e:
+    print(f"Error processing existing users: {str(e)}")
 
 class Payment(models.Model):
     """
@@ -86,12 +110,76 @@ class Payment(models.Model):
         return f"Payment {self.payment_id} - {self.get_status_display()}"
 
 
+class Profile(models.Model):
+    """Profile model to store additional user information."""
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='profile'
+    )
+    phone = models.CharField(
+        _('phone number'),
+        max_length=15,
+        blank=True,
+        validators=[
+            RegexValidator(
+                regex=r'^\+?1?\d{9,15}$',
+                message="Phone number must be entered in the format: '+999999999'. Up to 15 digits allowed."
+            )
+        ]
+    )
+    profile_picture = models.ImageField(
+        _('profile picture'),
+        upload_to='profile_pictures/',
+        default='profile_pictures/default-avatar.png',
+        blank=True
+    )
+    bio = models.TextField(_('bio'), blank=True)
+    date_of_birth = models.DateField(_('date of birth'), null=True, blank=True)
+    website = models.URLField(_('website'), blank=True)
+    
+    class Meta:
+        verbose_name = _('profile')
+        verbose_name_plural = _('profiles')
+        
+    def __str__(self):
+        return f"Profile for {self.user.get_full_name()}"
+
+    def get_full_name(self):
+        """Return the user's full name."""
+        return self.user.get_full_name()
+
+    def get_short_name(self):
+        """Return the user's short name."""
+        return self.user.get_short_name()
+
+    def get_profile_picture_url(self):
+        """Return the URL of the profile picture."""
+        if hasattr(self, 'profile_picture') and self.profile_picture:
+            return self.profile_picture.url
+        return '/static/profile_pictures/default-avatar.png'
+
+    def save(self, *args, **kwargs):
+        """Ensure profile picture is saved correctly."""
+        try:
+            super().save(*args, **kwargs)
+            if self.profile_picture:
+                # Resize image if needed
+                from PIL import Image
+                img = Image.open(self.profile_picture.path)
+                if img.height > 300 or img.width > 300:
+                    output_size = (300, 300)
+                    img.thumbnail(output_size)
+                    img.save(self.profile_picture.path)
+        except Exception as e:
+            print(f"Error saving profile: {str(e)}")
+
 class Wishlist(models.Model):
     """
     Model to store user's wishlist items
     """
     user = models.ForeignKey(
-        'auth.User',
+        User,
         on_delete=models.CASCADE,
         related_name='wishlist_items',
         verbose_name=_('user'),
@@ -712,7 +800,7 @@ class Order(models.Model):
     
     # Field tracker for detecting changes
     tracker = FieldTracker(fields=['status', 'tracking_number', 'tracking_url'])
-    
+
     class Meta:
         ordering = ['-created_at']
         verbose_name = _('order')
@@ -724,15 +812,75 @@ class Order(models.Model):
     def save(self, *args, **kwargs):
         # First save to get an ID
         super().save(*args, **kwargs)
-        # Then update the order number if needed
+        
+        # Update order number if needed
         if not self.order_number:
-            # Use created_at instead of created
             self.order_number = f'ORD-{self.created_at.strftime("%Y%m%d")}-{self.id}'
-            # Save again to update the order number
             super().save(update_fields=['order_number'])
+            return
+            
+        # Update item prices to match current product prices
+        for item in self.items.all():
+            item.update_price()
     
-    def get_total_cost(self):
-        return sum(item.get_cost() for item in self.items.all())
+    def get_total_cost(self, update_db=True):
+        """Calculate total cost of all items in the order"""
+        items = self.items.all()
+        total = sum(item.quantity * item.price for item in items)
+        if update_db:
+            self.total_amount = total
+            self.save(update_fields=['total_amount'])
+        return total
+
+
+class OrderItem(models.Model):
+    """Model to store items in an order"""
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name='items',
+        verbose_name=_('order')
+    )
+    product = models.ForeignKey(
+        'Product',
+        on_delete=models.CASCADE,
+        related_name='order_items',
+        verbose_name=_('product')
+    )
+    price = models.DecimalField(
+        _('price'),
+        max_digits=10,
+        decimal_places=2,
+        help_text=_('Price at time of order')
+    )
+    quantity = models.PositiveIntegerField(
+        _('quantity'),
+        default=1,
+        validators=[MinValueValidator(1)]
+    )
+    created_at = models.DateTimeField(_('created at'), auto_now_add=True)
+    updated_at = models.DateTimeField(_('updated at'), auto_now=True)
+
+    class Meta:
+        verbose_name = _('order item')
+        verbose_name_plural = _('order items')
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['order']),
+            models.Index(fields=['product']),
+        ]
+
+    def __str__(self):
+        return f"{self.quantity} × {self.product.name}"
+
+    def get_cost(self):
+        """Calculate cost of this item"""
+        return self.price * self.quantity
+
+    def update_price(self):
+        """Update price to match current product price"""
+        self.price = self.product.price
+        self.save(update_fields=['price'])
 
 
 class OrderActivity(models.Model):
@@ -856,12 +1004,22 @@ class OrderItem(models.Model):
     product = models.ForeignKey(Product, related_name='order_items', on_delete=models.CASCADE)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     quantity = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
+    class Meta:
+        ordering = ['-created_at']
+        
     def __str__(self):
-        return f'{self.quantity} x {self.product.name} (Order: {self.order.order_number})'
+        return f"{self.quantity} x {self.product.name} (Order: {self.order.order_number})"
 
     def get_cost(self):
         return self.price * self.quantity
+
+    def update_price(self):
+        """Update item price to match current product price"""
+        self.price = self.product.price
+        self.save(update_fields=['price', 'updated_at'])
 
 
 class Cart(models.Model):
@@ -888,7 +1046,7 @@ class Cart(models.Model):
         """Update cart totals based on cart items"""
         items = self.items.all()
         self.item_count = sum(item.quantity for item in items)
-        self.total = sum(item.total_price for item in items)
+        self.total = sum(item.quantity * item.price for item in items)  # Calculate total using quantity and price
         self.save(update_fields=['item_count', 'total', 'updated_at'])
     
     @property
@@ -929,14 +1087,19 @@ class CartItem(models.Model):
 
     def increase_quantity(self, quantity=1):
         self.quantity += quantity
+        self.price = self.product.price  # Update price to match current product price
         self.save()
+        self.cart.update_totals()  # Update cart totals
 
     def decrease_quantity(self, quantity=1):
         if self.quantity > quantity:
             self.quantity -= quantity
+            self.price = self.product.price  # Update price to match current product price
             self.save()
+            self.cart.update_totals()  # Update cart totals
         else:
             self.delete()
+            self.cart.update_totals()  # Update cart totals after deletion
 
 
 

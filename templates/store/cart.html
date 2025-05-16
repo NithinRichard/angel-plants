@@ -17,15 +17,15 @@
     
     <h1 class="mb-4">Your Shopping Cart</h1>
     
-    {% if order and order.orderitem_set.count > 0 %}
+    {% if cart and cart.items.count > 0 %}
         <div class="row">
             <div class="col-lg-8">
                 <div class="card mb-4">
                     <div class="card-header bg-light">
-                        <h5 class="mb-0">Cart Items ({{ order.orderitem_set.count }})</h5>
+                        <h5 class="mb-0">Cart Items ({{ cart.items.count }})</h5>
                     </div>
                     <div class="card-body p-0">
-                        {% for item in order.orderitem_set.all %}
+                        {% for item in cart.items.all %}
                             <div class="cart-item p-3 border-bottom" data-item-id="{{ item.id }}">
                                 <div class="row align-items-center">
                                     <div class="col-md-2">
@@ -46,15 +46,15 @@
                                         <div class="input-group" style="max-width: 120px;">
                                             <button class="btn btn-outline-secondary btn-sm decrement" type="button">-</button>
                                             <input type="number" class="form-control form-control-sm text-center quantity-input" 
-                                                   value="{{ item.quantity }}" min="1" max="{{ item.product.stock }}"
+                                                   value="{{ item.quantity }}" min="1" max="{{ item.product.quantity }}"
                                                    data-item-id="{{ item.id }}">
                                             <button class="btn btn-outline-secondary btn-sm increment" type="button">+</button>
                                         </div>
-                                        <small class="text-muted">{{ item.product.stock }} available</small>
+                                        <small class="text-muted">{{ item.product.quantity }} available</small>
                                     </div>
                                     <div class="col-md-2 text-end">
                                         <p class="mb-1 fw-bold item-total" data-item-id="{{ item.id }}">
-                                            ₹{{ item.get_cost|floatformat:2 }}
+                                            ₹{{ item.total_price|floatformat:2 }}
                                         </p>
                                         <form action="{% url 'store:remove_from_cart' product_id=item.product.id %}" method="post" class="d-inline">
                                             {% csrf_token %}
@@ -75,7 +75,7 @@
                     </a>
                     <form id="clear-cart-form" action="{% url 'store:clear_cart' %}" method="post" class="d-inline">
                         {% csrf_token %}
-                        <button type="submit" class="btn btn-outline-danger">
+                        <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Are you sure you want to clear your cart?')">
                             <i class="fas fa-trash-alt me-2"></i>Clear Cart
                         </button>
                     </form>
@@ -89,8 +89,8 @@
                     </div>
                     <div class="card-body">
                         <div class="d-flex justify-content-between mb-2">
-                            <span>Subtotal (<span id="item-count">{{ order.orderitem_set.count }}</span> items)</span>
-                            <span id="subtotal">₹{{ order.get_total_cost|floatformat:2 }}</span>
+                            <span>Subtotal (<span id="item-count">{{ cart.items.count }}</span> items)</span>
+                            <span id="subtotal">₹{{ cart.total|floatformat:2 }}</span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span>Shipping</span>
@@ -100,13 +100,13 @@
                             <span>Tax (18%)</span>
                             <span>₹{{ tax|floatformat:2 }}</span>
                         </div>
-                        <hr>
+                        <hr class="my-3">
                         <div class="d-flex justify-content-between mb-3">
-                            <strong>Total</strong>
-                            <strong id="order-total">₹{{ total_with_shipping|floatformat:2 }}</strong>
+                            <span>Total</span>
+                            <span id="total">₹{{ total_with_shipping|floatformat:2 }}</span>
                         </div>
                         <a href="{% url 'store:checkout' %}" class="btn btn-success w-100">
-                            Proceed to Checkout
+                            <i class="fas fa-credit-card me-2"></i>Proceed to Checkout
                         </a>
                     </div>
                 </div>
