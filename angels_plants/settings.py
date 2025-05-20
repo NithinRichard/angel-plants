@@ -41,10 +41,10 @@ LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'store:account'
 LOGOUT_REDIRECT_URL = 'store:product_list'
 
-# Razorpay Configuration - Using direct values for now
-RAZORPAY_KEY_ID = 'rzp_test_UkKiMPSmpMsQhe'
-RAZORPAY_KEY_SECRET = 'DtX7LWT4BmdBBMmJr8a7zU2k'
-RAZORPAY_WEBHOOK_SECRET = ''  # Add your webhook secret if needed
+# Razorpay Configuration
+RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID')
+RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET')
+RAZORPAY_WEBHOOK_SECRET = os.getenv('RAZORPAY_WEBHOOK_SECRET', '')
 
 # Payment Settings
 PAYMENT_SUCCESS_URL = 'payment:payment_success'

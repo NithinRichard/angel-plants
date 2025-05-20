@@ -28,10 +28,15 @@ try:
     razorpay_key_id = getattr(settings, 'RAZORPAY_KEY_ID', None)
     razorpay_key_secret = getattr(settings, 'RAZORPAY_KEY_SECRET', None)
     
-    logger.debug(f"RAZORPAY_KEY_ID from settings: {razorpay_key_id[:8] if razorpay_key_id else 'NOT FOUND'}")
+    # Log first 4 characters of the key for debugging (or 'NONE' if not set)
+    key_id_display = f"{razorpay_key_id[:4]}..." if razorpay_key_id else 'NOT SET'
+    logger.debug(f"RAZORPAY_KEY_ID: {key_id_display}")
     
     if not razorpay_key_id or not razorpay_key_secret:
-        error_msg = "Razorpay API keys are not properly configured in settings.py"
+        error_msg = (
+            "Razorpay API keys are not properly configured. "
+            "Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in your environment variables."
+        )
         logger.critical(error_msg)
         raise ImproperlyConfigured(error_msg)
     
