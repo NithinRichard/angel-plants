@@ -3,7 +3,10 @@ import requests
 from django.core.files import File
 from django.core.management.base import BaseCommand
 from django.core.files.temp import NamedTemporaryFile
-from store.models import Category, Product
+from store.models import Category, Product, ProductImage
+from django.utils.text import slugify
+from django.core.files.base import ContentFile
+from django.conf import settings
 
 # High-quality plant images from Pexels with proper attribution
 PLANT_IMAGES = {
@@ -33,6 +36,31 @@ PLANT_IMAGES = {
         'photographer': 'Elina Volkova',
         'description': 'Stately Fiddle Leaf Fig tree.'
     },
+    'Monstera Deliciosa': {
+        'url': 'https://images.pexels.com/photos/6208086/pexels-photo-6208086.jpeg',
+        'photographer': 'Elina Volkova',
+        'description': 'Lush Monstera with beautiful leaf fenestrations.'
+    },
+    'Rubber Plant': {
+        'url': 'https://images.pexels.com/photos/6208087/pexels-photo-6208087.jpeg',
+        'photographer': 'Elina Volkova',
+        'description': 'Glossy-leaved Rubber Plant.'
+    },
+    'Bird of Paradise': {
+        'url': 'https://images.pexels.com/photos/6208089/pexels-photo-6208089.jpeg',
+        'photographer': 'Elina Volkova',
+        'description': 'Tropical Bird of Paradise plant.'
+    },
+    'Calathea': {
+        'url': 'https://images.pexels.com/photos/6208088/pexels-photo-6208088.jpeg',
+        'photographer': 'Elina Volkova',
+        'description': 'Ornate Calathea with patterned leaves.'
+    },
+    'Spider Plant': {
+        'url': 'https://images.pexels.com/photos/4503271/pexels-photo-4503271.jpeg',
+        'photographer': 'Elina Volkova',
+        'description': 'Variegated Spider Plant with baby plantlets.'
+    },
     
     # Outdoor Plants
     'Lavender': {
@@ -44,6 +72,21 @@ PLANT_IMAGES = {
         'url': 'https://i.pinimg.com/736x/20/2c/cf/202ccf0fbadb04765bc0c5045fa4b927.jpg',
         'photographer': 'Marta Dzedyshko',
         'description': 'Vibrant red rose bush.'
+    },
+    'Hydrangea': {
+        'url': 'https://images.pexels.com/photos/4503272/pexels-photo-4503272.jpeg',
+        'photographer': 'Elina Volkova',
+        'description': 'Lush blue Hydrangea bush.'
+    },
+    'Japanese Maple': {
+        'url': 'https://images.pexels.com/photos/4503274/pexels-photo-4503274.jpeg',
+        'photographer': 'Elina Volkova',
+        'description': 'Beautiful Japanese Maple tree.'
+    },
+    'Boxwood': {
+        'url': 'https://images.pexels.com/photos/4503275/pexels-photo-4503275.jpeg',
+        'photographer': 'Elina Volkova',
+        'description': 'Neatly trimmed Boxwood hedge.'
     },
     'Sunflower': {
         'url': 'https://www.lovethegarden.com/sites/default/files/content/articles/uk/giant-sunflowers.jpg',
@@ -119,326 +162,52 @@ PLANT_IMAGES = {
 class Command(BaseCommand):
     help = 'Populate the database with plant data'
 
+    def download_image(self, instance, image_url, folder):
+        try:
+            response = requests.get(image_url)
+            if response.status_code == 200:
+                # Create the directory if it doesn't exist
+                os.makedirs(os.path.join(settings.MEDIA_ROOT, folder), exist_ok=True)
+                
+                # Get the file extension from the URL
+                file_extension = os.path.splitext(image_url)[1]
+                if not file_extension:
+                    file_extension = '.jpg'  # Default to jpg if no extension found
+                
+                # Create a unique filename
+                filename = f"{slugify(instance.name)}{file_extension}"
+                filepath = os.path.join(folder, filename)
+                
+                # Save the image
+                instance.image.save(filename, ContentFile(response.content), save=True)
+                self.stdout.write(f'Downloaded image for {instance.name}')
+            else:
+                self.stderr.write(f'Failed to download image for {instance.name}: {response.status_code}')
+        except Exception as e:
+            self.stderr.write(f'Error downloading image for {instance.name}: {str(e)}')
+
     def handle(self, *args, **options):
         # Create categories if they don't exist
         categories_data = [
             {
                 'name': 'Indoor Plants',
                 'slug': 'indoor-plants',
-                'description': 'Beautiful plants that thrive in indoor conditions, perfect for homes and offices.',
-                'image_url': 'https://fedandfit.com/wp-content/uploads/2020/06/houseplants-scaled-e1593515074870.jpeg',
-                'products': [
-                    'Snake Plant',
-                    'ZZ Plant',
-                    'Pothos',
-                    'Peace Lily',
-                    'Fiddle Leaf Fig'
-                ]
+                'description': 'Beautiful plants that thrive indoors',
+                'image_url': 'https://images.unsplash.com/photo-1485955900006-10f4d324d411'
             },
             {
                 'name': 'Outdoor Plants',
                 'slug': 'outdoor-plants',
-                'description': 'Perfect plants for your garden that thrive in outdoor conditions.',
-                'image_url': 'https://greenorchid.co.in/wp-content/uploads/2020/11/Outdoor-plant-1.jpg',
-                'products': [
-                    'Lavender',
-                    'Rose Bush',
-                    'Sunflower',
-                    'Tulip',
-                    'Hydrangea'
-                ]
+                'description': 'Perfect plants for your garden',
+                'image_url': 'https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07'
             },
             {
                 'name': 'Succulents',
                 'slug': 'succulents',
-                'description': 'Low-maintenance and beautiful plants that store water in their leaves.',
-                'image_url': 'https://3.bp.blogspot.com/-Mo25IcY_t78/Wf99JH83GqI/AAAAAAAAAHg/RyV53b6E2QwYRBsEs841o5VtcIBomwcWACLcBGAs/s1600/IMG_20171018_185746_903.jpg',
-                'products': [
-                    'Echeveria',
-                    'Aloe Vera',
-                    'Jade Plant',
-                    'String of Pearls',
-                    'Hens and Chicks'
-                ]
-            },
-            {
-                'name': 'Flowering Plants',
-                'slug': 'flowering-plants',
-                'description': 'Brighten up your space with beautiful flowering plants.',
-                'image_url': 'https://images.ctfassets.net/zma7thmmcinb/6QIUKgB2OMvXSJeTYJvwar/e6612763932b524aefdbdc0e8d818501/spring-blooming-bulbs-lead.jpg',
-                'products': [
-                    'Orchid',
-                    'African Violet',
-                    'Anthurium',
-                    'Bromeliad',
-                    'Kalanchoe'
-                ]
-            },
-        ]
-
-        # Create a dictionary to store all products with their details
-        products_data = []
-        
-        # Define product details with accurate information
-        product_details = {
-            # Indoor Plants
-            'Snake Plant': {
-                'slug': 'snake-plant',
-                'description': 'Sansevieria trifasciata, also known as the snake plant, is a hardy indoor plant that purifies the air by removing toxins. It thrives in low light and requires minimal watering.',
-                'price': 24.99,
-                'compare_at_price': 34.99,
-                'light_requirements': 'Low to bright indirect light',
-                'watering_needs': 'Low (water every 2-3 weeks)',
-                'mature_size': '2-4 feet tall',
-                'difficulty_level': 'easy',
-                'is_featured': True,
-                'is_bestseller': True
-            },
-            'ZZ Plant': {
-                'slug': 'zz-plant',
-                'description': 'Zamioculcas zamiifolia, commonly known as the ZZ plant, is an excellent choice for beginners. It tolerates low light and irregular watering.',
-                'price': 29.99,
-                'compare_at_price': 39.99,
-                'light_requirements': 'Low to bright indirect light',
-                'watering_needs': 'Low (water when soil is dry)',
-                'mature_size': '2-3 feet tall',
-                'difficulty_level': 'easy',
-                'is_featured': True,
-                'is_bestseller': True
-            },
-            'Pothos': {
-                'slug': 'pothos',
-                'description': 'Epipremnum aureum, or Pothos, is a versatile trailing plant that purifies the air. It can grow in various light conditions.',
-                'price': 19.99,
-                'compare_at_price': 29.99,
-                'light_requirements': 'Low to bright indirect light',
-                'watering_needs': 'Moderate (water when top inch is dry)',
-                'mature_size': '6-10 feet long',
-                'difficulty_level': 'easy',
-                'is_featured': True,
-                'is_bestseller': True
-            },
-            'Peace Lily': {
-                'slug': 'peace-lily',
-                'description': 'Spathiphyllum, or Peace Lily, is known for its beautiful white flowers and air-purifying qualities. It thrives in low to medium light.',
-                'price': 34.99,
-                'compare_at_price': 44.99,
-                'light_requirements': 'Low to medium indirect light',
-                'watering_needs': 'Moderate (keep soil moist)',
-                'mature_size': '1-4 feet tall',
-                'difficulty_level': 'easy',
-                'is_featured': True,
-                'is_bestseller': True
-            },
-            'Fiddle Leaf Fig': {
-                'slug': 'fiddle-leaf-fig',
-                'description': 'Ficus lyrata, or Fiddle Leaf Fig, is a popular indoor tree with large, violin-shaped leaves. It makes a dramatic statement in any room.',
-                'price': 59.99,
-                'compare_at_price': 79.99,
-                'light_requirements': 'Bright indirect light',
-                'watering_needs': 'Moderate (water when top 2 inches are dry)',
-                'mature_size': '6-10 feet tall',
-                'difficulty_level': 'moderate',
-                'is_featured': True,
-                'is_bestseller': True
-            },
-            
-            # Outdoor Plants
-            'Lavender': {
-                'slug': 'lavender',
-                'description': 'Lavandula, or Lavender, is a fragrant herb with beautiful purple flowers. It attracts pollinators and is drought-tolerant once established.',
-                'price': 14.99,
-                'compare_at_price': 19.99,
-                'light_requirements': 'Full sun',
-                'watering_needs': 'Low (drought-tolerant)',
-                'mature_size': '1-3 feet tall',
-                'difficulty_level': 'easy',
-                'is_featured': True
-            },
-            'Rose Bush': {
-                'slug': 'rose-bush',
-                'description': 'Rosa spp., or Rose Bush, is a classic garden favorite known for its beautiful, fragrant flowers in various colors.',
-                'price': 24.99,
-                'compare_at_price': 34.99,
-                'light_requirements': 'Full sun',
-                'watering_needs': 'Moderate (water deeply once a week)',
-                'mature_size': '3-6 feet tall',
-                'difficulty_level': 'moderate',
-                'is_featured': True
-            },
-            'Sunflower': {
-                'slug': 'sunflower',
-                'description': 'Helianthus annuus, or Sunflower, is a cheerful annual with large, bright yellow flowers that track the sun.',
-                'price': 12.99,
-                'compare_at_price': 16.99,
-                'light_requirements': 'Full sun',
-                'watering_needs': 'Moderate (water regularly)',
-                'mature_size': '3-10 feet tall',
-                'difficulty_level': 'easy',
-                'is_featured': True
-            },
-            'Tulip': {
-                'slug': 'tulip',
-                'description': 'Tulipa spp., or Tulip, is a spring-blooming perennial with cup-shaped flowers in a wide range of colors.',
-                'price': 9.99,
-                'compare_at_price': 14.99,
-                'light_requirements': 'Full sun to partial shade',
-                'watering_needs': 'Moderate (water when soil is dry)',
-                'mature_size': '6-24 inches tall',
-                'difficulty_level': 'easy',
-                'is_featured': True
-            },
-            'Hydrangea': {
-                'slug': 'hydrangea',
-                'description': 'Hydrangea macrophylla, or Bigleaf Hydrangea, produces large, showy flower clusters in shades of blue, pink, or white.',
-                'price': 29.99,
-                'compare_at_price': 39.99,
-                'light_requirements': 'Morning sun, afternoon shade',
-                'watering_needs': 'Moderate to high (keep soil moist)',
-                'mature_size': '3-6 feet tall and wide',
-                'difficulty_level': 'moderate',
-                'is_featured': True
-            },
-            
-            # Succulents
-            'Echeveria': {
-                'slug': 'echeveria',
-                'description': 'Echeveria spp. are rosette-forming succulents with colorful, fleshy leaves. They are drought-tolerant and easy to care for.',
-                'price': 12.99,
-                'compare_at_price': 16.99,
-                'light_requirements': 'Bright light to full sun',
-                'watering_needs': 'Low (water when soil is completely dry)',
-                'mature_size': '2-12 inches in diameter',
-                'difficulty_level': 'easy',
-                'is_featured': True,
-                'is_bestseller': True
-            },
-            'Aloe Vera': {
-                'slug': 'aloe-vera',
-                'description': 'Aloe barbadensis, or Aloe Vera, is a medicinal succulent with soothing gel inside its leaves. It\'s great for sunburns and skin care.',
-                'price': 14.99,
-                'compare_at_price': 19.99,
-                'light_requirements': 'Bright light',
-                'watering_needs': 'Low (water when soil is dry)',
-                'mature_size': '1-2 feet tall',
-                'difficulty_level': 'easy',
-                'is_featured': True,
-                'is_bestseller': True
-            },
-            'Jade Plant': {
-                'slug': 'jade-plant',
-                'description': 'Crassula ovata, or Jade Plant, is a popular succulent with thick, woody stems and oval-shaped leaves. It symbolizes good luck.',
-                'price': 19.99,
-                'compare_at_price': 24.99,
-                'light_requirements': 'Bright light',
-                'watering_needs': 'Low (water when soil is dry)',
-                'mature_size': '2-5 feet tall',
-                'difficulty_level': 'easy',
-                'is_featured': True
-            },
-            'String of Pearls': {
-                'slug': 'string-of-pearls',
-                'description': 'Senecio rowleyanus, or String of Pearls, is a unique trailing succulent with spherical leaves that resemble pearls on a string.',
-                'price': 16.99,
-                'compare_at_price': 21.99,
-                'light_requirements': 'Bright, indirect light',
-                'watering_needs': 'Low (water when soil is dry)',
-                'mature_size': '1-2 feet long',
-                'difficulty_level': 'moderate',
-                'is_featured': True
-            },
-            'Hens and Chicks': {
-                'slug': 'hens-and-chicks',
-                'description': 'Sempervivum tectorum, or Hens and Chicks, is a hardy succulent that forms rosettes and produces offsets (chicks) around the mother plant (hen).',
-                'price': 9.99,
-                'compare_at_price': 14.99,
-                'light_requirements': 'Full sun',
-                'watering_needs': 'Low (drought-tolerant)',
-                'mature_size': '3-6 inches tall',
-                'difficulty_level': 'easy',
-                'is_featured': True
-            },
-            # Flowering Plants
-            'Orchid': {
-                'slug': 'orchid',
-                'description': 'Phalaenopsis spp., or Moth Orchid, is an elegant flowering plant with long-lasting blooms. It\'s perfect for adding a touch of sophistication to any space.',
-                'price': 34.99,
-                'compare_at_price': 49.99,
-                'light_requirements': 'Bright, indirect light',
-                'watering_needs': 'Moderate (water when almost dry)',
-                'mature_size': '1-3 feet tall',
-                'difficulty_level': 'moderate',
-                'is_featured': True,
-                'is_bestseller': True
-            },
-            'African Violet': {
-                'slug': 'african-violet',
-                'description': 'Saintpaulia, or African Violet, is a popular houseplant with velvety leaves and clusters of purple, pink, or white flowers.',
-                'price': 12.99,
-                'compare_at_price': 16.99,
-                'light_requirements': 'Bright, indirect light',
-                'watering_needs': 'Moderate (keep soil slightly moist)',
-                'mature_size': '6-9 inches tall',
-                'difficulty_level': 'moderate',
-                'is_featured': True
-            },
-            'Anthurium': {
-                'slug': 'anthurium',
-                'description': 'Anthurium andraeanum, or Flamingo Flower, is known for its glossy, heart-shaped leaves and long-lasting, waxy flowers in red, pink, or white.',
-                'price': 29.99,
-                'compare_at_price': 39.99,
-                'light_requirements': 'Bright, indirect light',
-                'watering_needs': 'Moderate (water when top inch is dry)',
-                'mature_size': '1-3 feet tall',
-                'difficulty_level': 'moderate',
-                'is_featured': True
-            },
-            'Bromeliad': {
-                'slug': 'bromeliad',
-                'description': 'Bromeliaceae, or Bromeliad, is a tropical plant with striking foliage and long-lasting, colorful flower bracts.',
-                'price': 24.99,
-                'compare_at_price': 34.99,
-                'light_requirements': 'Bright, indirect light',
-                'watering_needs': 'Moderate (water in the central cup)',
-                'mature_size': '1-3 feet tall',
-                'difficulty_level': 'easy',
-                'is_featured': True
-            },
-            'Kalanchoe': {
-                'slug': 'kalanchoe',
-                'description': 'Kalanchoe blossfeldiana is a flowering succulent that produces clusters of small, brightly colored flowers. It blooms for several weeks.',
-                'price': 14.99,
-                'compare_at_price': 19.99,
-                'light_requirements': 'Bright light',
-                'watering_needs': 'Low to moderate (let soil dry between waterings)',
-                'mature_size': '6-18 inches tall',
-                'difficulty_level': 'easy',
-                'is_featured': True
+                'description': 'Low-maintenance plants that store water',
+                'image_url': 'https://images.unsplash.com/photo-1525498128493-380d1990ac71'
             }
-        }
-        
-        # Build products_data list from the product_details dictionary
-        for product_name, details in product_details.items():
-            if product_name in PLANT_IMAGES:
-                # Generate a simple SKU from the product name
-                sku = f"{product_name.replace(' ', '').upper()[:8]}-{len(products_data) + 1:03d}"
-                
-                products_data.append({
-                    'name': product_name,
-                    'slug': details['slug'],
-                    'sku': sku,
-                    'description': details['description'],
-                    'price': details['price'],
-                    'compare_at_price': details.get('compare_at_price'),
-                    'image_url': PLANT_IMAGES[product_name]['url'],
-                    'light_requirements': details.get('light_requirements', ''),
-                    'watering_needs': details.get('watering_needs', ''),
-                    'mature_size': details.get('mature_size', ''),
-                    'difficulty_level': details.get('difficulty_level', 'easy'),
-                    'is_featured': details.get('is_featured', False),
-                    'is_bestseller': details.get('is_bestseller', False),
-                    'short_description': details['description'][:200] + '...' if len(details['description']) > 200 else details['description']
-                })
+        ]
 
         self.stdout.write('Creating categories...')
         categories = {}
@@ -458,112 +227,171 @@ class Command(BaseCommand):
             categories[cat_data['slug']] = category
             self.stdout.write(f'Created category: {category.name}')
 
+        # Create sample products
+        products_data = [
+            # Indoor Plants
+            {
+                'name': 'Monstera Deliciosa',
+                'slug': 'monstera-deliciosa',
+                'sku': 'MONST-001',
+                'description': 'A popular tropical plant with distinctive split leaves',
+                'price': 49.99,
+                'quantity': 10,
+                'category': categories['indoor-plants'],
+                'image_url': PLANT_IMAGES['Monstera Deliciosa']['url']
+            },
+            {
+                'name': 'Snake Plant',
+                'slug': 'snake-plant',
+                'sku': 'SNAKE-001',
+                'description': 'A hardy plant that purifies indoor air',
+                'price': 29.99,
+                'quantity': 15,
+                'category': categories['indoor-plants'],
+                'image_url': PLANT_IMAGES['Snake Plant']['url']
+            },
+            {
+                'name': 'ZZ Plant',
+                'slug': 'zz-plant',
+                'sku': 'ZZPLANT-001',
+                'description': 'A low-maintenance plant with glossy green leaves',
+                'price': 34.99,
+                'quantity': 8,
+                'category': categories['indoor-plants'],
+                'image_url': PLANT_IMAGES['ZZ Plant']['url']
+            },
+            {
+                'name': 'Pothos',
+                'slug': 'pothos',
+                'sku': 'POTHOS-001',
+                'description': 'Easy-to-care trailing plant with heart-shaped leaves',
+                'price': 24.99,
+                'quantity': 20,
+                'category': categories['indoor-plants'],
+                'image_url': PLANT_IMAGES['Pothos']['url']
+            },
+            {
+                'name': 'Rubber Plant',
+                'slug': 'rubber-plant',
+                'sku': 'RUBBER-001',
+                'description': 'A popular houseplant with large, glossy leaves',
+                'price': 39.99,
+                'quantity': 12,
+                'category': categories['indoor-plants'],
+                'image_url': PLANT_IMAGES['Rubber Plant']['url']
+            },
+            {
+                'name': 'Bird of Paradise',
+                'slug': 'bird-of-paradise',
+                'sku': 'BIRD-001',
+                'description': 'Tropical plant with large, banana-like leaves',
+                'price': 59.99,
+                'quantity': 7,
+                'category': categories['indoor-plants'],
+                'image_url': PLANT_IMAGES['Bird of Paradise']['url']
+            },
+            {
+                'name': 'Calathea',
+                'slug': 'calathea',
+                'sku': 'CALAT-001',
+                'description': 'Ornamental plant with beautifully patterned leaves',
+                'price': 32.99,
+                'quantity': 14,
+                'category': categories['indoor-plants'],
+                'image_url': PLANT_IMAGES['Calathea']['url']
+            },
+            {
+                'name': 'Spider Plant',
+                'slug': 'spider-plant',
+                'sku': 'SPIDER-001',
+                'description': 'Easy-to-grow plant with arching leaves and baby plantlets',
+                'price': 19.99,
+                'quantity': 25,
+                'category': categories['indoor-plants'],
+                'image_url': PLANT_IMAGES['Spider Plant']['url']
+            },
+            
+            # Outdoor Plants
+            {
+                'name': 'Lavender',
+                'slug': 'lavender',
+                'sku': 'LAV-001',
+                'description': 'Fragrant purple flowers that attract pollinators',
+                'price': 14.99,
+                'quantity': 30,
+                'category': categories['outdoor-plants'],
+                'image_url': PLANT_IMAGES['Lavender']['url']
+            },
+            {
+                'name': 'Rose Bush',
+                'slug': 'rose-bush',
+                'sku': 'ROSE-001',
+                'description': 'Classic flowering shrub with beautiful blooms',
+                'price': 24.99,
+                'quantity': 18,
+                'category': categories['outdoor-plants'],
+                'image_url': PLANT_IMAGES['Rose Bush']['url']
+            },
+            {
+                'name': 'Hydrangea',
+                'slug': 'hydrangea',
+                'sku': 'HYDRA-001',
+                'description': 'Large clusters of flowers that change color based on soil pH',
+                'price': 34.99,
+                'quantity': 15,
+                'category': categories['outdoor-plants'],
+                'image_url': PLANT_IMAGES['Hydrangea']['url']
+            },
+            {
+                'name': 'Japanese Maple',
+                'slug': 'japanese-maple',
+                'sku': 'JMAPLE-001',
+                'description': 'Ornamental tree with delicate, colorful foliage',
+                'price': 89.99,
+                'quantity': 5,
+                'category': categories['outdoor-plants'],
+                'image_url': PLANT_IMAGES['Japanese Maple']['url']
+            },
+            {
+                'name': 'Boxwood',
+                'slug': 'boxwood',
+                'sku': 'BOX-001',
+                'description': 'Evergreen shrub perfect for hedges and topiaries',
+                'price': 29.99,
+                'quantity': 22,
+                'category': categories['outdoor-plants'],
+                'image_url': PLANT_IMAGES['Boxwood']['url']
+            },
+            {
+                'name': 'Echeveria',
+                'slug': 'echeveria',
+                'sku': 'ECH-001',
+                'description': 'Beautiful rosette-forming succulent',
+                'price': 19.99,
+                'quantity': 20,
+                'category': categories['succulents'],
+                'image_url': 'https://images.unsplash.com/photo-1525498128493-380d1990ac71'
+            }
+        ]
+
         self.stdout.write('\nAdding plants...')
         for product_data in products_data:
-            # Find the category for this product
-            category = None
-            for cat_data in categories_data:
-                if product_data['name'] in cat_data.get('products', []):
-                    category = categories[cat_data['slug']]
-                    break
-            
-            if not category:
-                self.stderr.write(self.style.ERROR(f"No category found for product: {product_data['name']}"))
-                continue
-
-            product, created = Product.objects.update_or_create(
+            product, created = Product.objects.get_or_create(
                 slug=product_data['slug'],
                 defaults={
                     'name': product_data['name'],
-                    'description': product_data['description'],
                     'sku': product_data['sku'],
-                    'short_description': product_data.get('short_description', product_data['description'][:200] + '...'),
+                    'description': product_data['description'],
                     'price': product_data['price'],
-                    'compare_at_price': product_data.get('compare_at_price'),
-                    'category': category,
-                    'light_requirements': product_data.get('light_requirements', ''),
-                    'watering_needs': product_data.get('watering_needs', ''),
-                    'mature_size': product_data.get('mature_size', ''),
-                    'difficulty_level': product_data.get('difficulty_level', 'easy'),
-                    'is_featured': product_data.get('is_featured', False),
-                    'is_bestseller': product_data.get('is_bestseller', False),
-                    'is_active': True
+                    'quantity': product_data['quantity'],
+                    'category': product_data['category']
                 }
             )
+            
+            # Download and save product image
+            if not product.image:
+                self.download_image(product, product_data['image_url'], 'products')
+            
+            self.stdout.write(f'Created product: {product.name}')
 
-            # Download and set product image if it doesn't have one
-            if 'image_url' in product_data and product_data['image_url']:
-                if not product.image:  # Only download if image doesn't exist
-                    success = self.download_image(product, product_data['image_url'], 'products')
-                    if not success:
-                        self.stderr.write(self.style.WARNING(f"Using placeholder for {product.name} due to image download failure"))
-                        # Set a default placeholder image if download fails
-                        if not product.image:
-                            product.image = 'products/placeholder.jpg'  # Make sure this path exists in your media directory
-                            product.save()
-
-            action = 'Created' if created else 'Updated'
-            self.stdout.write(self.style.SUCCESS(f'{action} product: {product.name}'))
-
-        self.stdout.write('\nDatabase population completed successfully!')
-
-    def download_image(self, obj, url, folder):
-        try:
-            # Skip if no URL is provided
-            if not url:
-                self.stderr.write(self.style.WARNING(f"No image URL provided for {obj.name}"))
-                return False
-                
-            # Create a temporary file
-            img_temp = None
-            try:
-                img_temp = NamedTemporaryFile(suffix='.jpg')
-                
-                # Set a user-agent to avoid 403 Forbidden errors
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                }
-                
-                # Download the image with a timeout
-                response = requests.get(url, stream=True, headers=headers, timeout=10)
-                response.raise_for_status()
-                
-                # Check content type to ensure it's an image
-                content_type = response.headers.get('content-type', '').lower()
-                if 'image' not in content_type:
-                    raise ValueError(f"URL does not point to an image (content-type: {content_type})")
-                
-                # Save the image to the temporary file
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        img_temp.write(chunk)
-                
-                # Reset file pointer to the beginning
-                img_temp.seek(0)
-                
-                # Generate a filename
-                filename = f"{obj.slug}.jpg"
-                
-                # Save the image to the object
-                obj.image.save(filename, File(img_temp), save=False)
-                obj.save()
-                
-                self.stdout.write(self.style.SUCCESS(f"Successfully downloaded image for {obj.name}"))
-                return True
-                
-            except requests.exceptions.RequestException as e:
-                self.stderr.write(self.style.WARNING(f"Failed to download image from {url} for {obj.name}: {e}"))
-                return False
-                
-            except Exception as e:
-                self.stderr.write(self.style.ERROR(f"Error processing image for {obj.name}: {e}"))
-                return False
-                
-            finally:
-                # Always close the temporary file if it was created
-                if img_temp is not None:
-                    img_temp.close()
-                    
-        except Exception as e:
-            self.stderr.write(self.style.ERROR(f"Unexpected error in download_image for {obj.name}: {e}"))
-            return False
+        self.stdout.write(self.style.SUCCESS('Successfully populated database with plants'))

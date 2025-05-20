@@ -793,6 +793,7 @@ class Order(models.Model):
     payment_method = models.CharField(_('payment method'), max_length=50, default='cash_on_delivery')
     payment_status = models.BooleanField(_('payment status'), default=False)
     payment_id = models.CharField(_('payment id'), max_length=100, blank=True, null=True)
+    razorpay_order_id = models.CharField(_('razorpay order id'), max_length=100, blank=True, null=True)
     payment_signature = models.CharField(_('payment signature'), max_length=200, blank=True, null=True)
     
     # Additional information
@@ -1045,9 +1046,14 @@ class Cart(models.Model):
     def update_totals(self):
         """Update cart totals based on cart items"""
         items = self.items.all()
-        self.item_count = sum(item.quantity for item in items)
+        self.item_count = items.count()
         self.total = sum(item.quantity * item.price for item in items)  # Calculate total using quantity and price
         self.save(update_fields=['item_count', 'total', 'updated_at'])
+    
+    @property
+    def total_quantity(self):
+        """Return the total quantity of all items in the cart"""
+        return self.items.aggregate(total_quantity=Sum('quantity'))['total_quantity'] or 0
     
     @property
     def is_empty(self):

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}Shop Plants - Angel's Plant Shop{% endblock %}
 
@@ -91,7 +92,11 @@
                     <div class="col">
                         <div class="card h-100 product-card">
                             <div class="position-relative">
-                                <img src="{{ product.image.url }}" class="card-img-top" alt="{{ product.name }}">
+                                {% if product.image %}
+                                    <img src="{{ product.image.url }}" class="card-img-top" alt="{{ product.name }}">
+                                {% else %}
+                                    <img src="{% static 'products/placeholder.jpg' %}" class="card-img-top" alt="No image available">
+                                {% endif %}
                                 {% if user.is_authenticated %}
                                 <div class="position-absolute top-0 end-0 p-2">
                                     <form action="{% url 'store:add_to_wishlist' product.id %}" method="post" class="d-inline">

@@ -42,6 +42,9 @@ urlpatterns = [
     # Store app
     path('', include('store.urls', namespace='store')),
     
+    # Payment app
+    path('payment/', include('payment.urls', namespace='payment')),
+    
     # Authentication
     path('accounts/logout/', custom_logout, name='logout'),
     path('accounts/', include('django.contrib.auth.urls')),

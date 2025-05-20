@@ -43,7 +43,7 @@ from .forms import (
 )
 from .models import (
     Category, Product, ProductImage, ProductVariation, Variation, VariationOption, 
-    Review, Order, OrderItem, Cart, CartItem, Address, Wishlist,
+    Review, Order, OrderItem, Cart, CartItem, Address, Wishlist, Payment,
     OrderActivity, BlogPost
 )
 
@@ -620,9 +620,11 @@ class OrderHistoryView(LoginRequiredMixin, ListView):
     template_name = 'store/order_history.html'
     context_object_name = 'orders'
     paginate_by = 10
+    login_url = 'login'
+    redirect_field_name = 'next'
     
     def get_queryset(self):
-        return Order.objects.filter(user=self.request.user).order_by('-created')
+        return Order.objects.filter(user=self.request.user).order_by('-created_at')
     
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -1270,18 +1272,37 @@ def add_to_cart(request, product_id, quantity=1):
         # Get or create cart for the current user
         cart, created = Cart.objects.get_or_create(
             user=request.user,
+            status='active',
             defaults={'status': 'active'}
         )
+        
+        # Debug: Print cart info
+        print(f"Cart ID: {cart.id}, Created: {created}")
         
         # Get or create cart item
         cart_item, created = CartItem.objects.get_or_create(
             cart=cart,
             product=product,
-            defaults={'quantity': 0, 'price': product.price}
+            defaults={
+                'quantity': 0,
+                'price': product.price  # Set initial price to current product price
+            }
         )
         
-        # Increase quantity
-        cart_item.increase_quantity(quantity)
+        # Debug: Print cart item info
+        print(f"CartItem ID: {cart_item.id if cart_item else 'None'}, Created: {created}")
+        print(f"Current quantity: {cart_item.quantity}, Adding: {quantity}")
+        
+        # Increase quantity if not created now
+        if not created:
+            cart_item.increase_quantity(quantity)
+        else:
+            cart_item.quantity = quantity
+            cart_item.price = product.price  # Ensure price is set for new items
+            cart_item.save()
+        
+        # Update cart totals
+        cart.update_totals()
         
         # Prepare response data
         response_data = {
@@ -1289,14 +1310,15 @@ def add_to_cart(request, product_id, quantity=1):
             'message': f"{product.name} added to cart",
             'cart': {
                 'item_count': cart.item_count,
-                'total': str(cart.total),
+                'total': str(cart.total.quantize(Decimal('0.00'))),
+                'total_quantity': cart.total_quantity,
             },
             'added_item': {
                 'product_id': product.id,
                 'name': product.name,
                 'quantity': cart_item.quantity,
-                'price': str(product.price),
-                'subtotal': str(cart_item.total_price)
+                'price': str(product.price.quantize(Decimal('0.00'))),
+                'subtotal': str((cart_item.quantity * cart_item.price).quantize(Decimal('0.00')))
             }
         }
         
@@ -1308,20 +1330,24 @@ def add_to_cart(request, product_id, quantity=1):
             return JsonResponse(response_data)
             
         # For regular form submission, redirect to cart or previous page
-        redirect_url = request.META.get('HTTP_REFERER', reverse('cart'))
+        redirect_url = request.META.get('HTTP_REFERER', reverse('store:cart'))
         return redirect(redirect_url)
         
     except Product.DoesNotExist:
         error_msg = 'Product not found.'
+        print(error_msg)
     except Exception as e:
         error_msg = f'An error occurred: {str(e)}'
+        print(f"Error in add_to_cart: {error_msg}")
+        import traceback
+        traceback.print_exc()
     
     # Handle errors
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JsonResponse({'status': 'error', 'message': error_msg}, status=400)
     
     messages.error(request, error_msg)
-    return redirect('home')
+    return redirect('store:home')
 
 
 @require_http_methods(["POST"])
@@ -2149,30 +2175,55 @@ class ProductDetailView(DetailView):
 
 class CartView(LoginRequiredMixin, View):
     def get(self, request, *args, **kwargs):
-        # Get or create a new cart
-        cart, created = Cart.objects.get_or_create(
-            user=request.user,
-            defaults={'status': 'active'}
-        )
-        
-        # Ensure cart totals are up to date
-        cart.update_totals()
-        
-        # Shipping cost for India
-        shipping_cost = Decimal('99.00')
-        
-        # GST rate in India (18%)
-        tax_rate = Decimal('0.18')
-        tax = cart.total * tax_rate
-        
-        context = {
-            'cart': cart,
-            'shipping_cost': shipping_cost,
-            'tax': tax.quantize(Decimal('0.01')),
-            'total_with_shipping': (cart.total + shipping_cost + tax).quantize(Decimal('0.01'))
-        }
-        
-        return render(request, 'store/cart.html', context)
+        try:
+            # Get or create a new cart
+            cart, created = Cart.objects.get_or_create(
+                user=request.user,
+                status='active',
+                defaults={'status': 'active'}
+            )
+            
+            # Debug: Print cart info
+            print(f"Cart ID: {cart.id}, Created: {created}")
+            
+            # Ensure cart totals are up to date
+            cart.update_totals()
+            
+            # Shipping cost for India
+            shipping_cost = Decimal('99.00')
+            
+            # GST rate in India (18%)
+            tax_rate = Decimal('0.18')
+            tax = cart.total * tax_rate
+            
+            # Get cart items with related products to minimize database queries
+            items = cart.items.select_related('product').all()
+            
+            # Debug: Print items
+            print(f"Number of items in cart: {items.count()}")
+            for item in items:
+                print(f"Item: {item.product.name if item.product else 'No product'}, Qty: {item.quantity}, Price: {item.price}")
+            
+            # Calculate total with shipping and tax
+            total_with_shipping = (cart.total + shipping_cost + tax).quantize(Decimal('0.00'))
+            
+            context = {
+                'cart': cart,
+                'items': items,  # Add cart items to context
+                'shipping_cost': shipping_cost.quantize(Decimal('0.00')),
+                'tax': tax.quantize(Decimal('0.00')),
+                'total_with_shipping': total_with_shipping,
+                'is_cart_empty': items.count() == 0  # Explicitly set cart empty status
+            }
+            
+            return render(request, 'store/cart.html', context)
+            
+        except Exception as e:
+            print(f"Error in CartView: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # Return empty cart context if there's an error
+            return render(request, 'store/cart.html', {'cart': None, 'is_cart_empty': True})
 
 class AddToCartView(LoginRequiredMixin, View):
     def post(self, request, *args, **kwargs):
@@ -2319,48 +2370,37 @@ class ClearCartView(LoginRequiredMixin, View):
 
 class CheckoutView(LoginRequiredMixin, View):
     def get(self, request, *args, **kwargs):
+        # First check if there's an active cart with items
+        cart = Cart.objects.filter(user=request.user, status='active').first()
+        
+        if not cart or cart.items.count() == 0:
+            messages.error(request, "Your cart is empty. Add some products before checking out.")
+            return redirect('store:cart')
+        
         try:
             # Try to get existing order
             order = Order.objects.get(user=request.user, payment_status=False)
             
+            # If order exists but has no items, delete it and create a new one
             if order.items.count() == 0:
-                messages.error(request, "Your cart is empty. Add some products before checking out.")
-                return redirect('store:cart')
-            
-            # Calculate total directly from order items
+                order.delete()
+                raise Order.DoesNotExist
+                
+            # Recalculate total from order items
             items = order.items.all()
             total = sum(item.quantity * item.price for item in items)
             
             # Update order total in database
             order.total_amount = total
-            order.save(update_fields=['total_amount'])
+            order.save(update_fields=['total_amount', 'updated_at'])
             
-            # Calculate shipping cost and tax
-            shipping_cost = Decimal('5.99')
-            tax_rate = Decimal('0.08')  # 8% tax rate
-            tax = total * tax_rate
-            
-            context = {
-                'order': order,
-                'shipping_cost': shipping_cost,
-                'tax': tax.quantize(Decimal('0.01')),
-                'total_with_shipping': (total + shipping_cost + tax).quantize(Decimal('0.01'))
-            }
-            
-            return render(request, 'store/checkout.html', context)
         except Order.DoesNotExist:
-            # If no order exists, try to create one from cart
-            cart = Cart.objects.filter(user=request.user, status='active').first()
-            if not cart or cart.items.count() == 0:
-                messages.error(request, "Your cart is empty. Add some products before checking out.")
-                return redirect('store:cart')
-            
-            # Create new order from cart items
+            # If no order exists, create one from cart
             order = Order.objects.create(
                 user=request.user,
                 email=request.user.email,
-                first_name=request.user.first_name,
-                last_name=request.user.last_name,
+                first_name=request.user.first_name or '',
+                last_name=request.user.last_name or '',
                 address='',
                 city='',
                 state='',
@@ -2391,8 +2431,22 @@ class CheckoutView(LoginRequiredMixin, View):
                 amount=order.total_amount,
                 status='pending'
             )
-            
-            return redirect('store:checkout')
+        
+        # Calculate shipping cost and tax (for display only)
+        shipping_cost = Decimal('99.00')  # Flat rate for India
+        tax_rate = Decimal('0.18')  # 18% GST
+        tax = (order.total_amount * tax_rate).quantize(Decimal('0.01'))
+        total_with_shipping = (order.total_amount + shipping_cost + tax).quantize(Decimal('0.01'))
+        
+        context = {
+            'order': order,
+            'shipping_cost': shipping_cost,
+            'tax': tax,
+            'total_with_shipping': total_with_shipping,
+            'items': order.items.all()  # Make sure items are passed to the template
+        }
+        
+        return render(request, 'store/checkout.html', context)
     
     def post(self, request, *args, **kwargs):
         try:

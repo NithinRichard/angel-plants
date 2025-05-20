@@ -6,19 +6,64 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
+BASE_DIR = Path(__file__).resolve().parent.parent
+
 # Load environment variables from .env file
-load_dotenv()
+env_path = os.path.join(BASE_DIR, '.env')
+print(f"Loading .env file from: {env_path}")
+load_dotenv(env_path)
+
+# Debug: Print loaded environment variables
+print("=== Environment Variables ===")
+print(f"RAZORPAY_KEY_ID: {'*' * 8}{os.getenv('RAZORPAY_KEY_ID', 'NOT FOUND')[-4:] if os.getenv('RAZORPAY_KEY_ID') else 'NOT FOUND'}")
+print(f"RAZORPAY_KEY_SECRET: {'*' * 8}{os.getenv('RAZORPAY_KEY_SECRET', 'NOT FOUND')[-4:] if os.getenv('RAZORPAY_KEY_SECRET') else 'NOT FOUND'}")
+print("===========================")
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Payment Settings
+PAYMENT_SUCCESS_URL = 'payment:payment_success'
+PAYMENT_FAILURE_URL = 'payment:payment_failed'
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-your-secret-key-here')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = ['*']
+# Allow Vercel deployment
+ALLOWED_HOSTS = ['*', '.vercel.app', '.now.sh', 'localhost', '127.0.0.1']
+
+# Authentication
+LOGIN_URL = 'login'
+LOGIN_REDIRECT_URL = 'store:account'
+LOGOUT_REDIRECT_URL = 'store:product_list'
+
+# Razorpay Configuration - Using direct values for now
+RAZORPAY_KEY_ID = 'rzp_test_UkKiMPSmpMsQhe'
+RAZORPAY_KEY_SECRET = 'DtX7LWT4BmdBBMmJr8a7zU2k'
+RAZORPAY_WEBHOOK_SECRET = ''  # Add your webhook secret if needed
+
+# Payment Settings
+PAYMENT_SUCCESS_URL = 'payment:payment_success'
+PAYMENT_FAILURE_URL = 'payment:payment_failed'
+PAYMENT_METHODS = [
+    ('razorpay', 'Razorpay'),
+    ('cod', 'Cash on Delivery'),
+]
+
+# Debug settings for payments
+PAYMENT_DEBUG = DEBUG
+
+# Currency settings
+CURRENCY = 'INR'
+CURRENCY_SYMBOL = '₹'  # Indian Rupee symbol
+
+# Order settings
+ORDER_PREFIX = 'ORD'
+ORDER_ID_LENGTH = 8  # Length of the random part of the order ID
 
 # Application definition
 INSTALLED_APPS = [
@@ -30,6 +75,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django.contrib.humanize',
     'store',
+    'payment',
     'crispy_forms',
     'crispy_bootstrap5',
     'django_ckeditor_5',
@@ -71,12 +117,18 @@ TEMPLATES = [
 WSGI_APPLICATION = 'angels_plants.wsgi.application'
 
 # Database
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+if os.getenv('DATABASE_URL'):
+    import dj_database_url
+    DATABASES = {
+        'default': dj_database_url.config(default=os.getenv('DATABASE_URL'))
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        }
+    }
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -94,6 +146,57 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+# Security settings for production
+if not DEBUG:
+    # HTTPS settings
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_SSL_REDIRECT = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    
+    # HSTS settings
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    
+    # Other security headers
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_BROWSER_XSS_FILTER = True
+    X_FRAME_OPTIONS = 'DENY'
+    
+    # CSRF trusted origins - update with your production domain
+    CSRF_TRUSTED_ORIGINS = ['https://yourdomain.com', 'https://www.yourdomain.com']
+    
+    # Logging for production
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'handlers': {
+            'file': {
+                'level': 'ERROR',
+                'class': 'logging.FileHandler',
+                'filename': os.path.join(BASE_DIR, 'logs/django_errors.log'),
+            },
+            'razorpay_file': {
+                'level': 'INFO',
+                'class': 'logging.FileHandler',
+                'filename': os.path.join(BASE_DIR, 'logs/razorpay.log'),
+            },
+        },
+        'loggers': {
+            'django': {
+                'handlers': ['file'],
+                'level': 'ERROR',
+                'propagate': True,
+            },
+            'payment': {
+                'handlers': ['razorpay_file'],
+                'level': 'INFO',
+                'propagate': True,
+            },
+        },
+    }
+
 # Internationalization
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'Asia/Kolkata'
@@ -101,17 +204,12 @@ USE_I18N = True
 USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'static'),
-]
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# Media files (User uploaded files)
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-
-# Media files
+# Media files (you'll need to use an external service like AWS S3 for media files in production)
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
@@ -129,8 +227,8 @@ DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@angelsplants.com')
 
 # Contact Information
 CONTACT_EMAIL = os.getenv('CONTACT_EMAIL', 'nithinrichard1@gmail.com')
-CONTACT_PHONE = '+1 (555) 123-4567'
-BUSINESS_ADDRESS = '123 Plant St, Greenery City, GC 12345'
+CONTACT_PHONE = '+91 9848666666'
+BUSINESS_ADDRESS = 'Puthenthope Trivandrum Kerala India 695586'
 BUSINESS_HOURS = [
     'Monday - Friday: 9:00 AM - 6:00 PM',
     'Saturday: 10:00 AM - 4:00 PM',

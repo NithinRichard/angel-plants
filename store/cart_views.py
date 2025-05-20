@@ -30,20 +30,23 @@ def add_to_cart(request, product_id, quantity=1):
         # Increase quantity
         cart_item.increase_quantity(quantity)
         
-        # Prepare response data
+        # Prepare response data with all required fields
         response_data = {
             'status': 'success',
             'message': f"{product.name} added to cart",
-            'cart': {
-                'item_count': cart.item_count,
-                'total': str(cart.total),
-            },
-            'added_item': {
+            'item_count': cart.item_count,
+            'total_quantity': cart.total_quantity,
+            'cart_total': float(cart.total),
+            'shipping_cost': 99.00,  # Fixed shipping cost for India
+            'tax': float(cart.total) * 0.18,  # 18% GST
+            'total_with_shipping': float(cart.total) * 1.18 + 99.00,  # Total with tax and shipping
+            'updated_item': {
+                'id': cart_item.id,
                 'product_id': product.id,
                 'name': product.name,
                 'quantity': cart_item.quantity,
-                'price': str(product.price),
-                'subtotal': str(cart_item.total_price)
+                'price': float(product.price),
+                'total_price': float(cart_item.total_price)
             }
         }
         
@@ -100,14 +103,20 @@ def update_cart(request):
                     except (CartItem.DoesNotExist, ValueError):
                         continue
             
-            # Prepare success response
+            # Prepare success response with all required data
             response_data = {
                 'status': 'success',
                 'message': 'Cart updated',
-                'cart': {
-                    'item_count': cart.item_count,
-                    'total': str(cart.total),
-                }
+                'item_count': cart.item_count,
+                'total_quantity': cart.total_quantity,
+                'cart_total': float(cart.total),
+                'shipping_cost': 99.00,  # Fixed shipping cost for India
+                'tax': float(cart.total) * 0.18,  # 18% GST
+                'total_with_shipping': float(cart.total) * 1.18 + 99.00,  # Total with tax and shipping
+                'updated_item': {
+                    'id': cart_item.id,
+                    'total_price': float(cart_item.total_price)
+                } if hasattr(locals(), 'cart_item') else None
             }
             
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -147,20 +156,23 @@ def remove_from_cart(request, product_id):
             # Remove the item from the cart
             cart_item.delete()
             
-            # Prepare success response
+            # Prepare success response with all required data
             response_data = {
                 'status': 'success',
                 'message': f"{product.name} removed from cart",
-                'cart': {
-                    'item_count': cart.item_count,
-                    'total': str(cart.total),
-                },
+                'item_count': cart.item_count,
+                'total_quantity': cart.total_quantity,
+                'cart_total': float(cart.total),
+                'shipping_cost': 99.00 if cart.item_count > 0 else 0.00,  # Free shipping if cart is empty
+                'tax': float(cart.total) * 0.18,  # 18% GST
+                'total_with_shipping': (float(cart.total) * 1.18 + (99.00 if cart.item_count > 0 else 0.00)) if cart.item_count > 0 else 0.00,
                 'removed_item': {
+                    'id': product.id,
                     'product_id': product.id,
                     'name': product.name,
                     'quantity': 0,
-                    'price': str(product.price),
-                    'subtotal': '0.00'
+                    'price': float(product.price),
+                    'total_price': 0.00
                 }
             }
             

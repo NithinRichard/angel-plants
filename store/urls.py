@@ -9,6 +9,15 @@ from . import views
 # Import cart views from the cart_views module
 from .cart_views import add_to_cart, update_cart, remove_from_cart
 
+# Import payment views
+from .payment_views import (
+    PaymentView,
+    CreateRazorpayOrderView,
+    PaymentSuccessView,
+    PaymentFailedView,
+    payment_webhook
+)
+
 app_name = 'store'
 
 urlpatterns = [
@@ -36,8 +45,13 @@ urlpatterns = [
     path('cart/remove/<int:product_id>/', remove_from_cart, name='remove_from_cart'),
     path('cart/clear/', views.ClearCartView.as_view(), name='clear_cart'),
     path('checkout/', views.CheckoutView.as_view(), name='checkout'),
+    path('checkout/payment/<int:order_id>/', PaymentView.as_view(), name='payment'),
+    path('checkout/payment/create-order/', CreateRazorpayOrderView.as_view(), name='create_razorpay_order'),
+    path('checkout/payment/success/', PaymentSuccessView.as_view(), name='payment_success'),
+    path('checkout/payment/failed/', PaymentFailedView.as_view(), name='payment_failed'),
     path('checkout/success/<str:order_number>/', views.CheckoutSuccessView.as_view(), name='checkout_success'),
     path('checkout/cancel/', views.CheckoutCancelView.as_view(), name='checkout_cancel'),
+    path('payment/webhook/', payment_webhook, name='payment_webhook'),
     
     # User account
     path('account/', views.AccountView.as_view(), name='account'),

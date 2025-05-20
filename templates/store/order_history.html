@@ -19,10 +19,10 @@
                     <a href="{% url 'store:order_history' %}" class="list-group-item list-group-item-action active">
                         <i class="fas fa-box me-2"></i> My Orders
                     </a>
-                    <a href="{% url 'account_change_password' %}" class="list-group-item list-group-item-action">
+                    <a href="{% url 'password_change' %}" class="list-group-item list-group-item-action">
                         <i class="fas fa-key me-2"></i> Change Password
                     </a>
-                    <a href="{% url 'account_logout' %}" class="list-group-item list-group-item-action text-danger">
+                    <a href="{% url 'logout' %}" class="list-group-item list-group-item-action text-danger">
                         <i class="fas fa-sign-out-alt me-2"></i> Logout
                     </a>
                 </div>
@@ -61,7 +61,7 @@
                                         </td>
                                         <td>{{ order.created|date:"M d, Y" }}</td>
                                         <td>
-                                            <span class="badge bg-{{ order.status|lower }}">
+                                            <span class="badge badge-{{ order.status|lower }}">
                                                 {{ order.get_status_display }}
                                             </span>
                                         </td>
